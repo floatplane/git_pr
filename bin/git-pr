@@ -11,7 +11,6 @@ require 'colorize'
 require 'git'
 require 'highline/import'
 require 'io/console'
-require 'netrc'
 require 'octokit'
 require 'optparse'
 require 'pp'
@@ -127,9 +126,6 @@ if command == "merge" and !options.merge.additional_arguments.empty?
   options.merge.pr = options.merge.additional_arguments.shift.to_i
 end
 
-AUTH_KEY_NAME = "git-merge-pull"
-NETRC_KEY = "#{AUTH_KEY_NAME}.api.github.com"
-
 def run(cmd, args = { :failure => lambda {} })
   puts cmd.green
   puts `#{cmd}`
@@ -142,62 +138,6 @@ end
 
 def run_test_output_empty(cmd)
   "" == `#{cmd}`
-end
-
-def test_github_credentials
-  n = Netrc.read
-  user, oauth_token = n[NETRC_KEY]
-  client = Octokit::Client.new :access_token => oauth_token
-  begin
-    client.user
-  rescue
-    n.delete NETRC_KEY
-    n.save
-    return false
-  end
-  return true
-end
-
-def prompt_for_github_credentials(args = {})
-  user = args[:user]
-  pass = args[:pass]
-  needs_otp = args[:needs_otp]
-  headers = {}
-
-  unless user
-    print "Enter your github username: "
-    user = STDIN.gets.chomp!
-    print "Password: "
-    pass = STDIN.noecho(&:gets).chomp!
-    puts "\n"
-  end
-
-  if needs_otp
-    print "Enter an OTP code: "
-    otp = STDIN.gets.chomp!
-    headers = { "X-GitHub-OTP" => "#{otp}" }
-  end
-
-  client = Octokit::Client.new :login => user, :password => pass
-  begin
-    authorizations = client.authorizations :headers => headers
-    auth = authorizations.find { |x| x[:app][:name].match "^#{AUTH_KEY_NAME}" }
-    unless auth
-      auth = client.create_authorization(:scopes => ["user", "repo"], :note => AUTH_KEY_NAME, :headers => headers)
-    end
-  rescue Octokit::Unauthorized
-    puts "Invalid username or password."
-    return false
-  rescue Octokit::OneTimePasswordRequired
-    # Come back through this method, prompting for an OTP
-    return prompt_for_github_credentials :user => user, :pass => pass, :needs_otp => true
-  end
-
-  n = Netrc.read
-  n[NETRC_KEY] = user, auth[:token]
-  n.save
-
-  return true
 end
 
 def pull_summary(pull)
@@ -217,30 +157,30 @@ def query_for_pull_to_merge(pulls)
   return pull_to_merge
 end
 
-if not test_github_credentials and not prompt_for_github_credentials
+if not GitPr::GitHub.test_credentials and not GitPr::GitHub.prompt_for_credentials
   exit -1
 end
+
+GitPr::GitHub.initialize_octokit
 
 # Get local Git object pointed at our repo root
 git = Git.open `git rev-parse --show-toplevel`.chomp!
 
 # Find the target repository that we'll merge the pull request into
-# TODO: could read off command line instead
 target_remote = git.remotes.find { |x| x.name == options.merge.remote }
 url_match = target_remote.url.match "^git@github.com:(.*)/(.*).git"
 organization = url_match[1]
 repository = url_match[2]
 
-n = Netrc.read
-user, oauth_token = n[NETRC_KEY]
-Octokit.configure do |c|
-  c.access_token = oauth_token
-end
-
 github_repo = Octokit.repo "#{organization}/#{repository}"
 # pp github_repo
 
 pulls = Octokit.pulls "#{organization}/#{repository}/pulls"
+unless pulls.length > 0
+  puts "No open pull requests found for #{organization}/#{repository}.".yellow
+  exit
+end
+
 if options.merge.pr
   pull = pulls.find { |p| p[:number] == options.merge.pr }
   unless pull
@@ -250,6 +190,7 @@ if options.merge.pr
 else
   pull = query_for_pull_to_merge pulls
 end
+
 
 pull_number = pull[:number]
 source_branch = pull[:head][:ref]
