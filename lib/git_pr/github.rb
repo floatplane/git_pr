@@ -53,6 +53,14 @@ module GitPr
         puts "Invalid username or password."
         return false
       rescue Octokit::OneTimePasswordRequired
+        # Clients that receive OTP codes via SMS won't get one when we do a get request to client.authorizations
+        # We have to make a post to the authorizations endpoint to trigger the sending of the SMS code.
+        # https://github.com/github/hub/commit/3d29989
+        begin
+          result = client.post "authorizations"
+        rescue Octokit::OneTimePasswordRequired
+        end
+
         # Come back through this method, prompting for an OTP
         return prompt_for_credentials :user => user, :pass => pass, :needs_otp => true
       end
