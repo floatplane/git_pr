@@ -126,10 +126,10 @@ if command == "merge" and !options.merge.additional_arguments.empty?
   options.merge.pr = options.merge.additional_arguments.shift.to_i
 end
 
-def run(cmd, args = { :failure => lambda {} })
+def run(cmd, args = { :failure => lambda {}, :newline => true })
   puts cmd.green
   puts `#{cmd}`
-  puts ''
+  puts '' if args[:newline]
   if $?.exitstatus != 0
     args[:failure].call()
     exit -1
@@ -312,7 +312,9 @@ if get_char.downcase == 'y'
   print "Do you want to delete the feature branch (y/n)? ".cyan
   if get_char.downcase == 'y'
     run "git push #{source_remote} :#{source_branch}"
-    run "git branch -d #{source_branch}"
+    source_branch_sha = git.branches[source_branch].gcommit.sha[0..6]
+    run "git branch -D #{source_branch}", :newline => false
+    puts "To restore it, run: " + "git branch #{source_branch} #{source_branch_sha}".green
   end
   puts "Merge complete!".cyan
 else
