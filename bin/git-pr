@@ -28,7 +28,11 @@ options = OpenStruct.new(:help => false,
                          :open => OpenStruct.new())
 
 global_options = OptionParser.new do |opts|
-  opts.banner = "Usage: git pr [options] subcommand [options]"
+  opts.banner = <<eos
+git_pr version #{GitPr::VERSION}
+
+Usage: git pr [options] subcommand [options]
+eos
 
   opts.separator "\nGlobal options"
 
@@ -51,12 +55,14 @@ global_options = OptionParser.new do |opts|
   end
 
     # auth: Check GitHub auth credentials, and prompt to update them if necessary
-    # list: List open pull requests
     # open: Open the webpage for a pull request
   opts.separator <<eos
 
 Valid subcommands:
     merge: Merge and close a pull request
+    list: List open pull requests
+
+Run "git pr <subcommand> -h" for help with subcommands.
 
 eos
 end
@@ -73,21 +79,25 @@ subcommands = {
 
   #   opts.separator ""
   # end,
-  # 'list' => OptionParser.new do |opts|
-  #   opts.banner = "Usage: git pr list [options]"
+  'list' => OptionParser.new do |opts|
+    opts.banner = "Usage: git pr list [options]"
 
-  #   opts.separator "\nList command options"
+    opts.separator "\nList command options"
 
-  #   opts.on("-r", "--readonly", "Check without prompting") do |v|
-  #     options.list.readonly = true
-  #   end
+    opts.on("-u", "--user [USERNAME]", "Only list PRs for the named GitHub user") do |user|
+      options.list.user = user
+    end
 
-  #   opts.separator ""
-  # end,
+    opts.separator ""
+  end,
   'merge' => OptionParser.new do |opts|
-    opts.banner = "Usage: git pr merge [options] [PR number]"
+    opts.banner = <<eos
+Usage: git pr merge [PR number]
 
-    opts.separator "\nMerge command options"
+If a PR number isn't passed, a menu of open PRs will be displayed.
+eos
+
+    # opts.separator "\nMerge command options"
 
     opts.separator ""
   end,
@@ -151,6 +161,19 @@ when "merge"
   # Load a pull request
   pull = GitPr::GitHub.find_or_prompt_for_pull_request github_project, pull_request
   GitPr::merge_pull_cleanly git, pull
+
+when "list"
+  pulls = Octokit.pulls "#{github_project}/pulls"
+  if options.list.user
+    pulls = pulls.select { |p| p[:user][:login] == options.list.user }
+  end
+
+  if pulls.any?
+    pulls.each { |p| puts pull_summary(p) }
+  else
+    puts "No open pull requests found.".yellow
+  end
+
 
 when "diff", "difftool"
   unless options.merge.additional_arguments.empty?
