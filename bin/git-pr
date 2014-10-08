@@ -130,20 +130,6 @@ if command == "merge" and !options.merge.additional_arguments.empty?
   options.merge.pr = options.merge.additional_arguments.shift.to_i
 end
 
-def run(cmd, args = { :failure => lambda {}, :newline => true, :force_print => false })
-  if $verbose || args[:force_print]
-    puts cmd.green
-    puts `#{cmd}`
-    puts '' if args[:newline]
-  else
-    `#{cmd}`
-  end
-  if $?.exitstatus != 0
-    args[:failure].call()
-    exit -1
-  end
-end
-
 def pull_summary(pull)
   return "##{pull[:number]} from #{pull[:user][:login]}: \"#{pull[:title]}\""
 end
@@ -242,8 +228,8 @@ end
 
 # Get the target branch up to date
 puts "Update branch '#{target_branch}' from remote"
-run "git checkout -q #{target_branch}"
-run "git pull --no-rebase --ff-only", :failure => lambda {
+GitPr.run_command "git checkout -q #{target_branch}"
+GitPr.run_command "git pull --no-rebase --ff-only", :failure => lambda {
   "Unable to update local target branch '#{target_branch}'. Please repair manually before continuing.".red
 }
 
@@ -273,21 +259,21 @@ if git.is_branch? rebase_branch
   puts "Local rebase branch '#{rebase_branch}' already exists. Please remove before continuing.".red
   exit -1
 end
-run "git checkout -q -b #{rebase_branch} #{remote_source_branch}"
+GitPr.run_command "git checkout -q -b #{rebase_branch} #{remote_source_branch}"
 
 # Add an at_exit handler to blow away the temp branch when we exit
 at_exit do
   if git.is_branch? rebase_branch
     puts "Removing temporary branch #{rebase_branch}" if $verbose
-    run "git checkout -q #{target_branch}"
-    run "git branch -D #{rebase_branch}"
+    GitPr.run_command "git checkout -q #{target_branch}"
+    GitPr.run_command "git branch -D #{rebase_branch}"
   end
 end
 
 # Rebase the rebase branch on top of the target branch
 puts "Rebasing '#{rebase_branch}' on top of '#{target_branch}'"
-run "git rebase #{target_branch} 2>&1", :failure => lambda {
-  run "git rebase --abort"
+GitPr.run_command "git rebase #{target_branch} 2>&1", :failure => lambda {
+  GitPr.run_command "git rebase --abort"
 
   puts "Unable to automatically rebase #{remote_source_branch} on top of #{target_branch}. Rebase manually and push before trying again.".red
   puts "Run: " + "git checkout #{source_branch}".yellow
@@ -297,13 +283,13 @@ run "git rebase #{target_branch} 2>&1", :failure => lambda {
 
 # Force push the rebased branch to the source remote.
 puts "Pushing changes from '#{rebase_branch}' to '#{source_remote.name}/#{source_branch}'"
-run "git push -f #{source_remote.name} HEAD:#{source_branch} 2>&1"
+GitPr.run_command "git push -f #{source_remote.name} HEAD:#{source_branch} 2>&1"
 
 # Merge the source branch into the target. Use --no-ff so that an explicit
 # merge commit is created.
 puts "Merging changes from '#{rebase_branch}' to '#{target_branch}'"
-run "git checkout -q #{target_branch}"
-run "git merge --no-ff #{rebase_branch} -m 'Merge #{pull_summary(pull)}'"
+GitPr.run_command "git checkout -q #{target_branch}"
+GitPr.run_command "git merge --no-ff #{rebase_branch} -m 'Merge #{pull_summary(pull)}'"
 
 # Print a log of the merge with branch structure visible. Jump through hoops to
 # get the right branch to start the log revision range with. If origin/develop
@@ -327,34 +313,22 @@ run "git merge --no-ff #{rebase_branch} -m 'Merge #{pull_summary(pull)}'"
 #
 puts "\nVerify that the merge looks clean:\n".cyan
 origin_parent = `git rev-list --abbrev-commit --parents -n 1 #{target_remote}/#{target_branch}`.split().last
-run "git log --graph --decorate --pretty=oneline --abbrev-commit --color #{target_branch} #{origin_parent}..#{target_branch}", :force_print => true
+GitPr.run_command "git log --graph --decorate --pretty=oneline --abbrev-commit --color #{target_branch} #{origin_parent}..#{target_branch}", :force_print_output => true
 
-def get_char
-  state = `stty -g`
-  `stty raw -echo -icanon isig`
-
-  STDIN.getc.chr
-ensure
-  `stty #{state}`
-  puts ""
-end
-
-print "\nDo you want to proceed with the merge (y/n)? ".cyan
-if get_char.downcase == 'y'
+if GitPr.prompt "\nDo you want to proceed with the merge (y/n)? ".cyan
   puts "Pushing changes to '#{target_remote}'"
-  run "git push #{target_remote} #{target_branch} 2>&1"
-  print "\nDo you want to delete the feature branch (y/n)? ".cyan
-  if get_char.downcase == 'y'
+  GitPr.run_command "git push #{target_remote} #{target_branch} 2>&1"
+  if GitPr.prompt "\nDo you want to delete the feature branch (y/n)? ".cyan
     source_branch_sha = git.branches["#{source_remote}/#{source_branch}"].gcommit.sha[0..6]
-    run "git push #{source_remote} :#{source_branch} 2>&1"
+    GitPr.run_command "git push #{source_remote} :#{source_branch} 2>&1"
     if git.is_branch? source_branch
       source_branch_sha = git.branches[source_branch].gcommit.sha[0..6]
-      run "git branch -D #{source_branch}", :newline => false
+      GitPr.run_command "git branch -D #{source_branch}"
     end
     puts "Feature branch '#{source_branch}' deleted. To restore it, run: " + "git branch #{source_branch} #{source_branch_sha}".green
   end
   puts "\nMerge complete!".cyan
 else
   puts "\nUndoing local merge"
-  run "git reset --hard #{target_remote}/#{target_branch}"
+  GitPr.run_command "git reset --hard #{target_remote}/#{target_branch}"
 end
