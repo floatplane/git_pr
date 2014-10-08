@@ -15,8 +15,6 @@ module GitPr
       begin
         client.user
       rescue
-        n.delete NETRC_KEY
-        n.save
         return false
       end
       return true
