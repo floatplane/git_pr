@@ -29,7 +29,7 @@ module GitPr
       unless user
         print "Enter your github username: "
         user = STDIN.gets.chomp!
-        print "Password: "
+        print "Enter github password for #{user} (never stored): "
         pass = STDIN.noecho(&:gets).chomp!
         puts "\n"
       end
