@@ -123,7 +123,7 @@ module GitPr
         exit
       end
       if pull_request
-        pull_request = pull_request.to_i
+        pull_request = pull_request
         pull = pulls.find { |p| p[:number] == pull_request }
         unless pull
           puts "Pull request #{pull_request} not found in project '#{github_project}'!".red
