@@ -1,6 +1,8 @@
 require "git_pr/github"
 require "git_pr/pull_request"
 require "git_pr/version"
+require "git_pr/merge"
+require "git_pr/diff"
 
 module GitPr
   # Your code goes here...

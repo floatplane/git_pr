@@ -144,10 +144,6 @@ def run(cmd, args = { :failure => lambda {}, :newline => true, :force_print => f
   end
 end
 
-def run_and_verify_no_output(cmd)
-  "" == `#{cmd}`
-end
-
 def pull_summary(pull)
   return "##{pull[:number]} from #{pull[:user][:login]}: \"#{pull[:title]}\""
 end
@@ -248,14 +244,14 @@ end
 puts "Update branch '#{target_branch}' from remote"
 run "git checkout -q #{target_branch}"
 run "git pull --no-rebase --ff-only", :failure => lambda {
-  "Unable to update local target branch (#{target_branch}). Please repair manually before continuing.".red
+  "Unable to update local target branch '#{target_branch}'. Please repair manually before continuing.".red
 }
 
 # If the local target branch differs from the remote target branch, they
 # must be reconciled manually.
 remote_target_branch = "#{target_remote}/#{target_branch}"
-unless run_and_verify_no_output "git diff #{target_branch} #{remote_target_branch}"
-  puts "Local branch (#{target_branch}) differs from remote branch (#{remote_target_branch}). Please reconcile before continuing.".red
+if git.diff("remotes/#{remote_target_branch}", target_branch).any?
+  puts "Local branch '#{target_branch}' differs from remote branch '#{remote_target_branch}'. Please reconcile before continuing.".red
   exit -1
 end
 
@@ -263,9 +259,9 @@ end
 # same contents as the remote source branch. If not, it must be reconciled
 # manually.
 remote_source_branch = "#{source_remote}/#{source_branch}"
-unless (run_and_verify_no_output "git branch --list #{source_branch}" or
-        run_and_verify_no_output "git diff #{remote_source_branch} #{source_branch}")
-  puts "Local branch (#{source_branch}) differs from remote branch (#{remote_source_branch}). Please reconcile before continuing.".red
+if git.is_branch? source_branch and
+    git.diff("remotes/#{remote_source_branch}", source_branch).any?
+  puts "Local branch '#{source_branch}' differs from remote branch '#{remote_source_branch}'. Please reconcile before continuing.".red
   exit -1
 end
 
@@ -273,8 +269,8 @@ end
 # failing if the temporary name already exists.
 rebase_branch = "#{source_branch}-rebase"
 puts "Create temporary branch '#{rebase_branch}'"
-unless run_and_verify_no_output "git branch --list #{rebase_branch}"
-  puts "Local rebase branch (#{rebase_branch}) already exists. Please remove before continuing.".red
+if git.is_branch? rebase_branch
+  puts "Local rebase branch '#{rebase_branch}' already exists. Please remove before continuing.".red
   exit -1
 end
 run "git checkout -q -b #{rebase_branch} #{remote_source_branch}"
