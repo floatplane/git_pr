@@ -159,9 +159,8 @@ target_branch = pull[:base][:ref]
 target_repo_ssh_url = pull[:base][:repo][:git_url]
 target_repo_clone_url = pull[:base][:repo][:clone_url]
 
-puts
 puts "Merging #{pull_summary(pull)}".cyan
-puts "#{target_repo_ssh_url}/#{target_branch} <= #{source_repo_ssh_url}/#{source_branch}".cyan
+puts "#{target_repo_ssh_url}/#{target_branch} <= #{source_repo_ssh_url}/#{source_branch}\n".cyan
 
 # find or add a remote for the PR
 source_remote = GitPr.ensure_remote_for_project(git,
