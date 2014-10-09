@@ -7,6 +7,7 @@ module GitPr
 
     AUTH_KEY_NAME = "git-merge-pull"
     NETRC_KEY = "#{AUTH_KEY_NAME}.api.github.com"
+    DEFAULT_REMOTE_KEY = "pr.defaultremote"
 
     def self.test_credentials
       n = Netrc.read
@@ -81,12 +82,17 @@ module GitPr
     def self.determine_project_name_from_command_line git, project_name, default_remotes
       # Figure out what GitHub project we're dealing with. First, did they pass us a name of
       # an existing remote, or did they pass a GitHub project?
-      default_remote_from_gitconfig = git.config "pr.defaultremote"
+      default_remote_from_gitconfig = git.config DEFAULT_REMOTE_KEY
       if project_name
         project_remote = git.remotes.find { |x| x.name == project_name }
-      elsif default_remote_from_gitconfig
-        puts "Using pr.defaultremote setting '#{default_remote_from_gitconfig}' from gitconfig" if $verbose
+      elsif !default_remote_from_gitconfig.empty?
+        puts "Using #{DEFAULT_REMOTE_KEY} setting '#{default_remote_from_gitconfig}' from gitconfig" if $verbose
         project_remote = git.remotes.find { |x| x.name == default_remote_from_gitconfig }
+        unless project_remote
+          puts "The remote '#{default_remote_from_gitconfig}' doesn't exist.".red
+          puts "Fix the value of '#{DEFAULT_REMOTE_KEY}' in gitconfig.".red
+          exit -1
+        end
       else
         project_remote = git.remotes.find { |x| default_remotes.include? x.name }
       end
@@ -101,10 +107,16 @@ module GitPr
         github_project = project_name
       end
 
+      unless github_project
+        puts "Unable to determine the active GitHub project.".red
+        puts "For more help, run: git pr -h"
+        exit -1
+      end
+
       begin
         github_repo = Octokit.repo "#{github_project}"
       rescue
-        puts "Project `#{github_project}` is not a valid GitHub project.".red
+        puts "Project '#{github_project}' is not a valid GitHub project.".red
         exit -1
       end
 
