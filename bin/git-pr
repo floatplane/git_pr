@@ -43,7 +43,9 @@ eos
           "--project [REMOTE|PROJECT]",
           "The GitHub project to access. Can be a named remote, or a GitHub project in",
           "<user>/<project> form. Defaults to the GitHub project that the \"origin\"",
-          "or \"upstream\" remote points to.") do |project|
+          "or \"upstream\" remote points to. You can override the default remote",
+          "with git config. Run: 'git config --add pr.defaultremote <remote_name>'"
+          ) do |project|
     options.project = project
   end
   opts.on("-h", "--help", "Show help") do
@@ -60,6 +62,8 @@ eos
   opts.separator <<eos
 
 Valid subcommands:
+    diff: Use "git diff" to display a diff for a pull request
+    difftool: Like "diff", but uses "git difftool" instead
     merge: Merge and close a pull request
     list: List open pull requests
 
