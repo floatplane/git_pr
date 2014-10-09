@@ -89,7 +89,7 @@ module GitPr
       if project_remote
         url_match = project_remote.url.match "^git@github.com:(.*).git"
         unless url_match
-          puts "Specified project '#{options.project}' is not a GitHub remote.".red
+          puts "Specified remote '#{project_remote}' is not a GitHub remote.".red
           exit -1
         end
         github_project = url_match[1]
