@@ -84,7 +84,7 @@ module GitPr
       default_remote_from_gitconfig = git.config "pr.defaultremote"
       if project_name
         project_remote = git.remotes.find { |x| x.name == project_name }
-      elsif default_remote_from_gitconfig
+      elsif !default_remote_from_gitconfig.empty?
         puts "Using pr.defaultremote setting '#{default_remote_from_gitconfig}' from gitconfig" if $verbose
         project_remote = git.remotes.find { |x| x.name == default_remote_from_gitconfig }
       else
