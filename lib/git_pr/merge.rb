@@ -1,5 +1,19 @@
 module GitPr
 
+  def self.ensure_remotes_for_pull_request git, pull
+    source_remote = GitPr.ensure_remote_for_project(git,
+                                                    pull[:head][:user][:login],
+                                                    pull[:head][:repo][:git_url],
+                                                    pull[:head][:repo][:ssh_url])
+
+    target_remote = GitPr.ensure_remote_for_project(git,
+                                                    pull[:base][:user][:login],
+                                                    pull[:base][:repo][:git_url],
+                                                    pull[:base][:repo][:ssh_url])
+
+    [source_remote, target_remote]
+  end
+
   def self.merge_pull_cleanly git, pull
 
     pull_number = pull[:number]
@@ -15,15 +29,7 @@ module GitPr
     puts "#{target_repo_ssh_url}/#{target_branch} <= #{source_repo_ssh_url}/#{source_branch}\n".cyan
 
     # find or add a remote for the PR
-    source_remote = GitPr.ensure_remote_for_project(git,
-                                                    pull[:head][:user][:login],
-                                                    pull[:head][:repo][:git_url],
-                                                    pull[:head][:repo][:ssh_url])
-
-    target_remote = GitPr.ensure_remote_for_project(git,
-                                                    pull[:base][:user][:login],
-                                                    pull[:base][:repo][:git_url],
-                                                    pull[:base][:repo][:ssh_url])
+    source_remote, target_remote = self.ensure_remotes_for_pull_request git, pull
 
     # Fetch latest changes from source & target remotes. Useful in case one of source or target
     # branches doesn't exist locally yet, or if we've never pulled from one of the remotes.

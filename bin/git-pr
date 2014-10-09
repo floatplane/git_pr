@@ -9,20 +9,21 @@
 
 require 'colorize'
 require 'git'
+require 'git_pr'
 require 'highline/import'
 require 'io/console'
 require 'octokit'
 require 'optparse'
-require 'pp'
-require 'git_pr'
 require 'ostruct'
+require 'pp'
 
 $verbose = false
 options = OpenStruct.new(:help => false,
                          :verbose => false,
                          :project => "origin",
                          :pull_request => nil,
-                         :auth => OpenStruct.new(),
+                         :diff => OpenStruct.new(),
+                         :difftool => OpenStruct.new(),
                          :list => OpenStruct.new(),
                          :merge => OpenStruct.new(),
                          :open => OpenStruct.new())
@@ -54,8 +55,6 @@ eos
     exit
   end
 
-    # auth: Check GitHub auth credentials, and prompt to update them if necessary
-    # open: Open the webpage for a pull request
   opts.separator <<eos
 
 Valid subcommands:
@@ -67,18 +66,22 @@ Run "git pr <subcommand> -h" for help with subcommands.
 eos
 end
 
+def make_diff_argument_parser command_name
+  OptionParser.new do |opts|
+    opts.banner = <<eos
+Usage: git pr #{command_name} [PR number] [-- [additional options]]
+
+Fetch the latest changes for the specified PR, and then run "git
+#{command_name}". Additional options are passed to the "git #{command_name}" command.
+eos
+
+    opts.separator ""
+  end
+end
+
 subcommands = {
-  # 'auth' => OptionParser.new do |opts|
-  #   opts.banner = "Usage: git pr auth [options]"
-
-  #   opts.separator "\nAuth command options"
-
-  #   opts.on("-r", "--readonly", "Check without prompting") do |v|
-  #     options.auth.readonly = true
-  #   end
-
-  #   opts.separator ""
-  # end,
+  'diff' => make_diff_argument_parser("diff"),
+  'difftool' => make_diff_argument_parser("difftool"),
   'list' => OptionParser.new do |opts|
     opts.banner = "Usage: git pr list [options]"
 
@@ -176,11 +179,54 @@ when "list"
 
 
 when "diff", "difftool"
-  unless options.merge.additional_arguments.empty?
-    pull_request = options.merge.additional_arguments.shift.to_i
+  pull_request = nil
+
+  unless options[command].additional_arguments.empty?
+    pull_request = options[command].additional_arguments.shift.to_i
   end
-  # Load a pull request
-  pull = GitPr::GitHub.find_or_prompt_for_pull_request github_project, pull_request
-  GitPr::merge_pull_cleanly git, pull
+
+  unless pull_request
+    puts "Must specify a pull request to diff.\n".red
+    puts subcommands[command]
+    exit -1
+  end
+
+  puts "Getting pull request information..."
+  begin
+    pull = Octokit.pull github_project, pull_request
+  rescue Octokit::NotFound
+    puts "Pull request #{pull_request} not found in #{github_project}.\n".red
+    puts subcommands[command]
+    exit -1
+  end
+
+  # Make sure we have the source and destination remotes
+  source_remote, target_remote = GitPr.ensure_remotes_for_pull_request git, pull
+
+  # Figure out if we need to fetch; skip it if we can
+  def have_commit_locally git, sha
+    begin
+      git.object sha
+    rescue Git::GitExecuteError
+      return false
+    end
+    true
+  end
+  source_remote.fetch unless have_commit_locally git, pull[:head][:sha]
+  target_remote.fetch unless have_commit_locally git, pull[:base][:sha]
+
+  source_branch = pull[:head][:ref]
+  target_branch = pull[:base][:ref]
+  merge_base = `git merge-base #{source_remote}/#{source_branch} #{target_remote}/#{target_branch}`.strip!
+  diff_command = "git #{command} #{options[command].additional_arguments.join " "} #{merge_base} #{source_remote}/#{source_branch}".gsub /\s* /, " "
+  puts "Executing #{diff_command}"
+
+  # Fork a child so that it gets access to the terminal. This makes "git diff" work with paging.
+  child = Kernel.fork do ||
+      Kernel.exec "#{diff_command} ;"
+  end
+
+  # Wait for the child
+  Process.wait child
 
 end
