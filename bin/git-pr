@@ -60,6 +60,8 @@ eos
   opts.separator <<eos
 
 Valid subcommands:
+    diff: Use "git diff" to display a diff for a pull request
+    difftool: Like "diff", but uses "git difftool" instead
     merge: Merge and close a pull request
     list: List open pull requests
 

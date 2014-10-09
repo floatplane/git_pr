@@ -81,8 +81,11 @@ module GitPr
     def self.determine_project_name_from_command_line git, project_name, default_remotes
       # Figure out what GitHub project we're dealing with. First, did they pass us a name of
       # an existing remote, or did they pass a GitHub project?
+      default_remote_from_gitconfig = git.config "pr.default_remote"
       if project_name
         project_remote = git.remotes.find { |x| x.name == project_name }
+      elsif default_remote_from_gitconfig
+        project_remote = git.remotes.find { |x| x.name == default_remote_from_gitconfig }
       else
         project_remote = git.remotes.find { |x| default_remotes.include? x.name }
       end
