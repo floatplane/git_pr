@@ -15,8 +15,6 @@ module GitPr
       begin
         client.user
       rescue
-        n.delete NETRC_KEY
-        n.save
         return false
       end
       return true
@@ -31,7 +29,7 @@ module GitPr
       unless user
         print "Enter your github username: "
         user = STDIN.gets.chomp!
-        print "Password: "
+        print "Enter github password for #{user} (never stored): "
         pass = STDIN.noecho(&:gets).chomp!
         puts "\n"
       end
@@ -78,6 +76,63 @@ module GitPr
       Octokit.configure do |c|
         c.access_token = oauth_token
       end
+    end
+
+    def self.determine_project_name_from_command_line git, project_name
+      # Figure out what GitHub project we're dealing with. First, did they pass us a name of
+      # an existing remote, or did they pass a GitHub project?
+      project_remote = git.remotes.find { |x| x.name == project_name }
+      if project_remote
+        url_match = project_remote.url.match "^git@github.com:(.*).git"
+        unless url_match
+          puts "Specified project '#{options.project}' is not a GitHub remote.".red
+          exit -1
+        end
+        github_project = url_match[1]
+      else
+        github_project = project_name
+      end
+
+      begin
+        github_repo = Octokit.repo "#{github_project}"
+      rescue
+        puts "Project `#{github_project}` is not a valid GitHub project.".red
+        exit -1
+      end
+
+      github_project
+    end
+
+    def self.query_for_pull_to_merge(pulls)
+      puts
+      pull_to_merge = nil
+      choose do |menu|
+        menu.prompt = "Select PR to merge: "
+        pulls.each do |pull|
+          menu.choice(pull_summary(pull)) { pull_to_merge = pull }
+        end
+        menu.choice(:Quit, "Exit program.") { exit }
+      end
+      pull_to_merge
+    end
+
+    def self.find_or_prompt_for_pull_request github_project, pull_request
+      pulls = Octokit.pulls "#{github_project}/pulls"
+      unless pulls.length > 0
+        puts "No open pull requests found for '#{github_project}'.".yellow
+        exit
+      end
+      if pull_request
+        pull_request = pull_request
+        pull = pulls.find { |p| p[:number] == pull_request }
+        unless pull
+          puts "Pull request #{pull_request} not found in project '#{github_project}'!".red
+          exit -1
+        end
+      else
+        pull = self.query_for_pull_to_merge pulls
+      end
+      pull
     end
 
   end

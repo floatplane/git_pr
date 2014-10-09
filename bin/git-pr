@@ -9,80 +9,98 @@
 
 require 'colorize'
 require 'git'
+require 'git_pr'
 require 'highline/import'
 require 'io/console'
 require 'octokit'
 require 'optparse'
-require 'pp'
-require 'git_pr'
 require 'ostruct'
+require 'pp'
 
+$verbose = false
 options = OpenStruct.new(:help => false,
                          :verbose => false,
-                         :auth => OpenStruct.new(),
+                         :project => "origin",
+                         :pull_request => nil,
+                         :diff => OpenStruct.new(),
+                         :difftool => OpenStruct.new(),
                          :list => OpenStruct.new(),
-                         :merge => OpenStruct.new(:remote => "origin"),
+                         :merge => OpenStruct.new(),
                          :open => OpenStruct.new())
 
 global_options = OptionParser.new do |opts|
-  opts.banner = "Usage: git pr [options] subcommand [options]"
+  opts.banner = <<eos
+git_pr version #{GitPr::VERSION}
+
+Usage: git pr [options] subcommand [options]
+eos
 
   opts.separator "\nGlobal options"
 
+  opts.on("-p",
+          "--project [REMOTE|PROJECT]",
+          "The GitHub project to access. Can be a named remote, or a GitHub project in",
+          "<user>/<project> form. Defaults to the GitHub project that the \"origin\" remote",
+          "points to.") do |project|
+    options.project = project
+  end
   opts.on("-h", "--help", "Show help") do
     options.help = true
   end
   opts.on("-v", "--verbose", "Verbose output") do
-    options.verbose = true
+    $verbose = true
   end
   opts.on("-V", "--version", "Print version") do
     puts GitPr::VERSION
     exit
   end
 
-    # auth: Check GitHub auth credentials, and prompt to update them if necessary
-    # list: List open pull requests
-    # open: Open the webpage for a pull request
   opts.separator <<eos
 
 Valid subcommands:
     merge: Merge and close a pull request
+    list: List open pull requests
+
+Run "git pr <subcommand> -h" for help with subcommands.
 
 eos
 end
 
+def make_diff_argument_parser command_name
+  OptionParser.new do |opts|
+    opts.banner = <<eos
+Usage: git pr #{command_name} [PR number] [-- [additional options]]
+
+Fetch the latest changes for the specified PR, and then run "git
+#{command_name}". Additional options are passed to the "git #{command_name}" command.
+eos
+
+    opts.separator ""
+  end
+end
+
 subcommands = {
-  # 'auth' => OptionParser.new do |opts|
-  #   opts.banner = "Usage: git pr auth [options]"
+  'diff' => make_diff_argument_parser("diff"),
+  'difftool' => make_diff_argument_parser("difftool"),
+  'list' => OptionParser.new do |opts|
+    opts.banner = "Usage: git pr list [options]"
 
-  #   opts.separator "\nAuth command options"
+    opts.separator "\nList command options"
 
-  #   opts.on("-r", "--readonly", "Check without prompting") do |v|
-  #     options.auth.readonly = true
-  #   end
-
-  #   opts.separator ""
-  # end,
-  # 'list' => OptionParser.new do |opts|
-  #   opts.banner = "Usage: git pr list [options]"
-
-  #   opts.separator "\nList command options"
-
-  #   opts.on("-r", "--readonly", "Check without prompting") do |v|
-  #     options.list.readonly = true
-  #   end
-
-  #   opts.separator ""
-  # end,
-  'merge' => OptionParser.new do |opts|
-    opts.banner = "Usage: git pr merge [options] [PR number]"
-
-    opts.separator "\nMerge command options"
-
-    opts.on("-r", "--remote REMOTE", "Remote that PR will be merged into. Default: origin") do |remote|
-      puts remote
-      options.merge.remote = remote
+    opts.on("-u", "--user [USERNAME]", "Only list PRs for the named GitHub user") do |user|
+      options.list.user = user
     end
+
+    opts.separator ""
+  end,
+  'merge' => OptionParser.new do |opts|
+    opts.banner = <<eos
+Usage: git pr merge [PR number]
+
+If a PR number isn't passed, a menu of open PRs will be displayed.
+eos
+
+    # opts.separator "\nMerge command options"
 
     opts.separator ""
   end,
@@ -121,42 +139,6 @@ rescue OptionParser::InvalidOption => e
   exit
 end
 
-# TODO: clean up subcommand parsing
-if command == "merge" and !options.merge.additional_arguments.empty?
-  options.merge.pr = options.merge.additional_arguments.shift.to_i
-end
-
-def run(cmd, args = { :failure => lambda {}, :newline => true })
-  puts cmd.green
-  puts `#{cmd}`
-  puts '' if args[:newline]
-  if $?.exitstatus != 0
-    args[:failure].call()
-    exit -1
-  end
-end
-
-def run_test_output_empty(cmd)
-  "" == `#{cmd}`
-end
-
-def pull_summary(pull)
-  return "##{pull[:number]} from #{pull[:user][:login]}: \"#{pull[:title]}\""
-end
-
-def query_for_pull_to_merge(pulls)
-  puts
-  pull_to_merge = nil
-  choose do |menu|
-    menu.prompt = "Select PR to merge: "
-    pulls.each do |pull|
-      menu.choice(pull_summary(pull)) { pull_to_merge = pull }
-    end
-    menu.choice(:Quit, "Exit program.") { exit }
-  end
-  return pull_to_merge
-end
-
 if not GitPr::GitHub.test_credentials and not GitPr::GitHub.prompt_for_credentials
   exit -1
 end
@@ -166,158 +148,85 @@ GitPr::GitHub.initialize_octokit
 # Get local Git object pointed at our repo root
 git = Git.open `git rev-parse --show-toplevel`.chomp!
 
-# Find the target repository that we'll merge the pull request into
-target_remote = git.remotes.find { |x| x.name == options.merge.remote }
-url_match = target_remote.url.match "^git@github.com:(.*)/(.*).git"
-organization = url_match[1]
-repository = url_match[2]
-
-github_repo = Octokit.repo "#{organization}/#{repository}"
-# pp github_repo
-
-pulls = Octokit.pulls "#{organization}/#{repository}/pulls"
-unless pulls.length > 0
-  puts "No open pull requests found for #{organization}/#{repository}.".yellow
-  exit
+def pull_summary(pull)
+  return "##{pull[:number]} from #{pull[:user][:login]}: \"#{pull[:title]}\""
 end
 
-if options.merge.pr
-  pull = pulls.find { |p| p[:number] == options.merge.pr }
-  unless pull
-    puts "Pull request #{options.merge.pr} not found!".red
-    exit
+# Figure out what GitHub project we're dealing with.
+github_project = GitPr::GitHub.determine_project_name_from_command_line git, options.project
+
+case command
+
+when "merge"
+  unless options.merge.additional_arguments.empty?
+    pull_request = options.merge.additional_arguments.shift.to_i
   end
-else
-  pull = query_for_pull_to_merge pulls
-end
+  # Load a pull request
+  pull = GitPr::GitHub.find_or_prompt_for_pull_request github_project, pull_request
+  GitPr::merge_pull_cleanly git, pull
 
-
-pull_number = pull[:number]
-source_branch = pull[:head][:ref]
-source_repo_ssh_url = pull[:head][:repo][:git_url]
-source_repo_clone_url = pull[:head][:repo][:clone_url]
-
-target_branch = pull[:base][:ref]
-target_repo_ssh_url = pull[:base][:repo][:git_url]
-target_repo_clone_url = pull[:base][:repo][:clone_url]
-
-puts
-puts "Merging #{pull_summary(pull)}".cyan
-puts "#{target_repo_ssh_url}/#{target_branch} <= #{source_repo_ssh_url}/#{source_branch}".cyan
-
-# find or add a remote for the PR
-# pp git.remotes.last
-source_remote = git.remotes.find { |x| [pull[:head][:repo][:git_url],
-                                        pull[:head][:repo][:ssh_url]].include? x.url }
-unless source_remote
-  puts "Adding remote: #{pull[:user][:login]} from #{pull[:head][:repo][:ssh_url]}"
-  source_remote = git.add_remote pull[:user][:login], pull[:head][:repo][:ssh_url]
-end
-
-# Fetch latest changes from source & target remotes. Useful in case one of source or target
-# branches doesn't exist locally yet, or if we've never pulled from one of the remotes.
-puts "Fetching latest changes from #{source_remote}"
-source_remote.fetch
-puts "Fetching latest changes from #{target_remote}"
-target_remote.fetch
-
-# Get the target branch up to date
-run "git checkout #{target_branch}"
-run "git pull --no-rebase --ff-only", :failure => lambda {
-  "Unable to update local target branch (#{target_branch}). Please repair manually before continuing.".red
-}
-
-# If the local target branch differs from the remote target branch, they
-# must be reconciled manually.
-remote_target_branch = "#{target_remote}/#{target_branch}"
-if (not run_test_output_empty "git diff #{target_branch} #{remote_target_branch}")
-  puts "Local branch (#{target_branch}) differs from remote branch (#{remote_target_branch}). Please reconcile before continuing.".red
-  exit -1
-end
-
-# If a local branch exists with the name source_branch, check that it has the
-# same contents as the remote source branch. If not, it must be reconciled
-# manually.
-remote_source_branch = "#{source_remote}/#{source_branch}"
-if (not run_test_output_empty "git branch --list #{source_branch}" and not run_test_output_empty "git diff #{remote_source_branch} #{source_branch}")
-  puts "Local branch (#{source_branch}) differs from remote branch (#{remote_source_branch}). Please reconcile before continuing.".red
-  exit -1
-end
-
-# Check out the remote source branch using a temporary branch name,
-# failing if the temporary name already exists.
-rebase_branch = "#{source_branch}-rebase"
-if not run_test_output_empty "git branch --list #{rebase_branch}"
-  puts "Local rebase branch (#{rebase_branch}) already exists. Please remove before continuing.".red
-  exit -1
-end
-run "git checkout -b #{rebase_branch} #{remote_source_branch}"
-
-# Rebase the rebase branch on top of the target branch
-run "git rebase #{target_branch}", :failure => lambda {
-  puts "Conflict detected in rebase. Please rebase manually, update PR, and re-run.".red
-  run "git rebase --abort"
-  run "git checkout #{target_branch}"
-  run "git branch -D #{rebase_branch}"
-}
-
-# Force push the rebased branch to the source remote.
-run "git push -f #{source_remote.name} HEAD:#{source_branch}"
-
-# Merge the source branch into the target. Use --no-ff so that an explicit
-# merge commit is created.
-run "git checkout #{target_branch}"
-run "git merge --no-ff #{rebase_branch} -m 'Merge #{pull_summary(pull)}'"
-
-# Now that the rebase branch is merged, we can safely delete it.
-run "git branch -D #{rebase_branch}"
-
-# Print a log of the merge with branch structure visible. Jump through hoops to
-# get the right branch to start the log revision range with. If origin/develop
-# is a merge commit, we need the right parent of the merge.
-#
-# The goal is to get output like this:
-#
-# *   5be2a77 (HEAD, develop) PR #1269. Merge branch floatplane/feature/categories into develop.
-# |\
-# | * 2242141 (floatplane/feature/categories, feature/categories) Process CR feedback. Remove StaticCreatorListDataSource, will just rework Streamed* version to meet needs instead.
-# | * d7cf231 Implement StaticCreatorListDataSource for categories, rename CreatorListDataSource => StreamedCreatorListDataSource
-# | * ef034d0 Don't animate profile pic transitions when we're re-using a cell and needing to replace someone else's picture. Only animate from the blank thumbnail to an actual picture.
-# | * 25cda8b Refactor CreatorListViewController.
-# | * 682b7ba Adjust search dialog size and default position. Remove temp close button. Stub categories into search dialog.
-# | * e8ba0b1 Rename CollaboratorsListViewController => CreatorListViewController. Add CollaboratorListViewController as a subclass of CreatorListViewController, will refactor behavior into it in future commits.
-# | * e901256 Make dismissWithBackgroundTouch work for all CustomModalDialogs, even those that don't set useCustomPopover. Fix latent bug in ApplicationInfoNavigationController's implementation of the same.
-# |/
-# * 8d5ecbc (origin/develop, origin/HEAD) Merge branch 'feature/schemaUpgradeUtils' into develop
-#
-# where the log stops at origin/develop, no matter whether it's a merge commit or not.
-#
-origin_parent = `git rev-list --abbrev-commit --parents -n 1 origin/#{target_branch}`.split().last
-run "git log --graph --decorate --pretty=oneline --abbrev-commit --color #{target_branch} #{origin_parent}..#{target_branch}"
-
-def get_char
-  state = `stty -g`
-  `stty raw -echo -icanon isig`
-
-  STDIN.getc.chr
-ensure
-  `stty #{state}`
-  puts ""
-end
-
-print "Do you want to proceed with the merge (y/n)? ".cyan
-if get_char.downcase == 'y'
-  puts "Pushing changes to #{target_remote}"
-  run "git push #{target_remote} #{target_branch}"
-  print "Do you want to delete the feature branch (y/n)? ".cyan
-  if get_char.downcase == 'y'
-    run "git push #{source_remote} :#{source_branch}"
-    source_branch_sha = git.branches[source_branch].gcommit.sha[0..6]
-    run "git branch -D #{source_branch}", :newline => false
-    puts "To restore it, run: " + "git branch #{source_branch} #{source_branch_sha}".green
+when "list"
+  pulls = Octokit.pulls "#{github_project}/pulls"
+  if options.list.user
+    pulls = pulls.select { |p| p[:user][:login] == options.list.user }
   end
-  puts "Merge complete!".cyan
-else
-  puts "Undoing local merge"
-  run "git reset --hard #{target_remote}/#{target_branch}"
+
+  if pulls.any?
+    pulls.each { |p| puts pull_summary(p) }
+  else
+    puts "No open pull requests found.".yellow
+  end
+
+
+when "diff", "difftool"
+  pull_request = nil
+
+  unless options[command].additional_arguments.empty?
+    pull_request = options[command].additional_arguments.shift.to_i
+  end
+
+  unless pull_request
+    puts "Must specify a pull request to diff.\n".red
+    puts subcommands[command]
+    exit -1
+  end
+
+  puts "Getting pull request information..."
+  begin
+    pull = Octokit.pull github_project, pull_request
+  rescue Octokit::NotFound
+    puts "Pull request #{pull_request} not found in #{github_project}.\n".red
+    puts subcommands[command]
+    exit -1
+  end
+
+  # Make sure we have the source and destination remotes
+  source_remote, target_remote = GitPr.ensure_remotes_for_pull_request git, pull
+
+  # Figure out if we need to fetch; skip it if we can
+  def have_commit_locally git, sha
+    begin
+      git.object sha
+    rescue Git::GitExecuteError
+      return false
+    end
+    true
+  end
+  source_remote.fetch unless have_commit_locally git, pull[:head][:sha]
+  target_remote.fetch unless have_commit_locally git, pull[:base][:sha]
+
+  source_branch = pull[:head][:ref]
+  target_branch = pull[:base][:ref]
+  merge_base = `git merge-base #{source_remote}/#{source_branch} #{target_remote}/#{target_branch}`.strip!
+  diff_command = "git #{command} #{options[command].additional_arguments.join " "} #{merge_base} #{source_remote}/#{source_branch}".gsub /\s* /, " "
+  puts "Executing #{diff_command}"
+
+  # Fork a child so that it gets access to the terminal. This makes "git diff" work with paging.
+  child = Kernel.fork do ||
+      Kernel.exec "#{diff_command} ;"
+  end
+
+  # Wait for the child
+  Process.wait child
+
 end
