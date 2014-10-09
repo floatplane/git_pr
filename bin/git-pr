@@ -18,9 +18,11 @@ require 'ostruct'
 require 'pp'
 
 $verbose = false
+$default_remotes = ["origin", "upstream"]
+
 options = OpenStruct.new(:help => false,
                          :verbose => false,
-                         :project => "origin",
+                         :project => nil,
                          :pull_request => nil,
                          :diff => OpenStruct.new(),
                          :difftool => OpenStruct.new(),
@@ -40,8 +42,8 @@ eos
   opts.on("-p",
           "--project [REMOTE|PROJECT]",
           "The GitHub project to access. Can be a named remote, or a GitHub project in",
-          "<user>/<project> form. Defaults to the GitHub project that the \"origin\" remote",
-          "points to.") do |project|
+          "<user>/<project> form. Defaults to the GitHub project that the \"origin\"",
+          "or \"upstream\" remote points to.") do |project|
     options.project = project
   end
   opts.on("-h", "--help", "Show help") do
@@ -153,7 +155,7 @@ def pull_summary(pull)
 end
 
 # Figure out what GitHub project we're dealing with.
-github_project = GitPr::GitHub.determine_project_name_from_command_line git, options.project
+github_project = GitPr::GitHub.determine_project_name_from_command_line git, options.project, $default_remotes
 
 case command
 
