@@ -3,13 +3,13 @@ module GitPr
   def self.ensure_remotes_for_pull_request git, pull
     source_remote = GitPr.ensure_remote_for_project(git,
                                                     pull[:head][:user][:login],
-                                                    pull[:head][:repo][:git_url],
-                                                    pull[:head][:repo][:ssh_url])
+                                                    pull[:head][:repo][:ssh_url],
+                                                    pull[:head][:repo][:git_url])
 
     target_remote = GitPr.ensure_remote_for_project(git,
                                                     pull[:base][:user][:login],
-                                                    pull[:base][:repo][:git_url],
-                                                    pull[:base][:repo][:ssh_url])
+                                                    pull[:base][:repo][:ssh_url],
+                                                    pull[:base][:repo][:git_url])
 
     [source_remote, target_remote]
   end
