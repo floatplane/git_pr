@@ -59,7 +59,7 @@ module GitPr
     # same contents as the remote source branch. If not, it must be reconciled
     # manually.
     remote_source_branch = "#{source_remote}/#{source_branch}"
-    if git.is_branch? source_branch and
+    if git.is_local_branch? source_branch and
         git.diff("remotes/#{remote_source_branch}", source_branch).any?
       puts "Local branch '#{source_branch}' differs from remote branch '#{remote_source_branch}'. Please reconcile before continuing.".red
       exit -1
@@ -69,7 +69,7 @@ module GitPr
     # failing if the temporary name already exists.
     rebase_branch = "#{source_branch}-rebase"
     puts "Create temporary branch '#{rebase_branch}'"
-    if git.is_branch? rebase_branch
+    if git.is_local_branch? rebase_branch
       puts "Local rebase branch '#{rebase_branch}' already exists. Please remove before continuing.".red
       exit -1
     end
@@ -77,7 +77,7 @@ module GitPr
 
     # Add an at_exit handler to blow away the temp branch when we exit
     at_exit do
-      if git.is_branch? rebase_branch
+      if git.is_local_branch? rebase_branch
         puts "Removing temporary branch #{rebase_branch}" if $verbose
         GitPr.run_command "git checkout -q #{target_branch}"
         GitPr.run_command "git branch -D #{rebase_branch}"
@@ -135,7 +135,7 @@ module GitPr
       if GitPr.prompt "\nDo you want to delete the feature branch (y/n)? ".cyan
         source_branch_sha = git.branches["#{source_remote}/#{source_branch}"].gcommit.sha[0..6]
         GitPr.run_command "git push #{source_remote} :#{source_branch} 2>&1"
-        if git.is_branch? source_branch
+        if git.is_local_branch? source_branch
           source_branch_sha = git.branches[source_branch].gcommit.sha[0..6]
           GitPr.run_command "git branch -D #{source_branch}"
         end
