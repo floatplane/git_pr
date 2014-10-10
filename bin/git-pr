@@ -64,8 +64,9 @@ eos
 Valid subcommands:
     diff: Use "git diff" to display a diff for a pull request
     difftool: Like "diff", but uses "git difftool" instead
-    merge: Merge and close a pull request
     list: List open pull requests
+    merge: Merge and close a pull request
+    open: Open a PR page on the web
 
 Run "git pr <subcommand> -h" for help with subcommands.
 
@@ -110,17 +111,18 @@ eos
 
     opts.separator ""
   end,
-  # 'open' => OptionParser.new do |opts|
-  #   opts.banner = "Usage: git pr open [options]"
+  'open' => OptionParser.new do |opts|
+    opts.banner = "Usage: git pr open [pr_number|branch]"
 
-  #   opts.separator "\nOpen command options"
+    opts.separator <<eos
 
-  #   opts.on("-r", "--readonly", "Check without prompting") do |v|
-  #     options.open.readonly = true
-  #   end
+Open a pull request page, if one exists, for the passed in PR number or
+branch. Otherwise, open a diff page where a pull request can be created. If no
+argument is passed, open a PR page for the current branch.
 
-  #   opts.separator ""
-  # end
+eos
+
+  end
 }
 
 begin
@@ -183,6 +185,49 @@ when "list"
     puts "No open pull requests found.".yellow
   end
 
+when "open"
+
+  # Look for an existing pull request that fits. A branch name or PR number can
+  # be passed on the command line, or we default to the current branch.
+  pulls = Octokit.pulls github_project
+  source = options[command].additional_arguments.shift || git.current_branch
+  if pulls.any?
+    pull = pulls.find { |p| p.head.ref == source || p.number.to_s == source }
+    if pull
+      `open #{pull.html_url}`
+      exit
+    end
+  end
+
+  # We didn't find a matching pull request, so let's try to open the "create
+  # pull request" page.
+  source = source
+  if not git.is_local_branch? source
+    puts "Unknown branch '#{source}'.".red
+    exit -1
+  end
+  target_repo = Octokit.repo(github_project)
+  target = target_repo.default_branch
+  if source == target
+    puts "Current branch '#{target}' is the default branch for the project '#{github_project}'."
+    puts "Can't open pull request page.".yellow
+    exit -1
+  end
+
+  # Need to open a diff page. Diff URL looks like:
+  # https://github.com/FiftyThree/Studio/compare/FiftyThree:master...floatplane:blobstore
+  # So I need to: get the upstream for the named branch. Extract the github project owner.
+  github_target_owner, github_target_project = github_project.split "/"
+  remote_source_branch = git.branches.remote.find { |b| b.name == source }
+  remote_url = remote_source_branch ? remote_source_branch.remote.url : nil
+  unless remote_url and remote_url.match /github\.com/
+    puts "Branch '#{source}' has never been pushed to GitHub."
+    exit -1
+  end
+  github_source_owner = remote_url.match(/git@github.com:(.*)\//)[1]
+  url = "https://github.com/#{github_source_owner}/#{github_target_project}/compare/#{github_target_owner}:#{target}...#{github_source_owner}:#{source}?expand=1"
+  `open #{url}`
+  exit
 
 when "diff", "difftool"
   pull_request = nil
