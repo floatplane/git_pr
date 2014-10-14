@@ -125,6 +125,24 @@ eos
   end
 }
 
+def alias_to_subcommand(subcommand)
+  case subcommand
+  when "dt", /^difft/
+    "difftool"
+  when "d", /^d/
+    "diff"
+  when "web", /^o/
+    "open"
+  when "ls", /^l/
+    "list"
+  when "ci", /^m/
+    "merge"
+  else
+    subcommand
+  end
+end
+
+# Parse global options. Print help if any unrecognized
 begin
   global_options.order!
 rescue OptionParser::InvalidOption => e
@@ -133,12 +151,26 @@ rescue OptionParser::InvalidOption => e
   exit
 end
 
-command = ARGV.shift
+command = alias_to_subcommand(ARGV.shift)
+
+# Check for the special command help. Support "git pr help" and "git pr help <subcommand>"
+if command == "help"
+  command = alias_to_subcommand(ARGV.shift)
+  if subcommands[command]
+    puts subcommands[command]
+  else
+    puts global_options
+  end
+  exit
+end
+
+# Unrecognized command? Print help and exit
 if !subcommands[command]
   puts global_options
   exit
 end
 
+# Parse subcommand options. Print help if any unrecognized
 begin
   options[command].additional_arguments = subcommands[command].permute!
 rescue OptionParser::InvalidOption => e
