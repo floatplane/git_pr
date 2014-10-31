@@ -1,3 +1,5 @@
+require 'shellwords'
+
 module GitPr
 
   def self.ensure_remotes_for_pull_request git, pull
@@ -103,7 +105,7 @@ module GitPr
     # merge commit is created.
     puts "Merging changes from '#{rebase_branch}' to '#{target_branch}'"
     GitPr.run_command "git checkout -q #{target_branch}"
-    GitPr.run_command "git merge --no-ff #{rebase_branch} -m 'Merge #{pull_summary(pull)}'"
+    GitPr.run_command "git merge --no-ff #{rebase_branch} -m #{Shellwords.escape("Merge " + pull_summary(pull))}"
 
     # Print a log of the merge with branch structure visible. Jump through hoops to
     # get the right branch to start the log revision range with. If origin/develop
