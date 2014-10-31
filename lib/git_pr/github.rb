@@ -97,9 +97,12 @@ module GitPr
         project_remote = git.remotes.find { |x| default_remotes.include? x.name }
       end
       if project_remote
-        url_match = project_remote.url.match "^git@github.com:(.*).git"
+        # Regex comment: match the github_user/repository non-greedily (.*?), and
+        # accept an optional .git at the end, but don't capture it (?:\.git).
+        url_match = project_remote.url.match /^git@github.com:(.*?)(?:\.git)?$/
         unless url_match
           puts "Specified remote '#{project_remote}' is not a GitHub remote.".red
+          puts "Remote URL: #{project_remote.url}".red if $verbose
           exit -1
         end
         github_project = url_match[1]
