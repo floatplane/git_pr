@@ -234,7 +234,7 @@ when "open"
   # We didn't find a matching pull request, so let's try to open the "create
   # pull request" page.
   source = source
-  if not git.is_local_branch? source
+  if not git.is_local_branch_fast? source
     puts "Unknown branch '#{source}'.".red
     exit -1
   end
@@ -250,8 +250,8 @@ when "open"
   # https://github.com/FiftyThree/Studio/compare/FiftyThree:master...floatplane:blobstore
   # So I need to: get the upstream for the named branch. Extract the github project owner.
   github_target_owner, github_target_project = github_project.split "/"
-  remote_source_branch = git.branches.remote.find { |b| b.name == source }
-  remote_url = remote_source_branch ? remote_source_branch.remote.url : nil
+  remote = git.find_remote_for_local_branch source
+  remote_url = remote ? remote.url : nil
   unless remote_url and remote_url.match /github\.com/
     puts "Branch '#{source}' has never been pushed to GitHub."
     exit -1
