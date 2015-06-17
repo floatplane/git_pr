@@ -1,3 +1,3 @@
 module GitPr
-  VERSION = "0.0.9.pre0"
+  VERSION = "0.0.9"
 end
