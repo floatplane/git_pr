@@ -43,11 +43,11 @@ module GitPr
 
       client = Octokit::Client.new :login => user, :password => pass
       begin
-        authorizations = client.authorizations :headers => headers
-        auth = authorizations.find { |x| x[:app][:name].match "^#{AUTH_KEY_NAME}" }
-        unless auth
-          auth = client.create_authorization(:scopes => ["user", "repo"], :note => AUTH_KEY_NAME, :headers => headers)
-        end
+        hostname = `hostname`.strip!
+        auth = client.create_authorization(:scopes => ["user", "repo"],
+                                           :note => "#{AUTH_KEY_NAME} (#{hostname})",
+                                           :fingerprint => "#{hostname} #{Time.now}",
+                                           :headers => headers)
       rescue Octokit::Unauthorized
         puts "Invalid username or password."
         return false
