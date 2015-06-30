@@ -185,8 +185,18 @@ end
 
 GitPr::GitHub.initialize_octokit
 
-# Get local Git object pointed at our repo root
-git = Git.open `git rev-parse --show-toplevel`.chomp!
+# Get local Git object pointed at our repo root. Do some extra work to deal with submodules.
+git_dir = `git rev-parse --show-toplevel`.chomp!
+git = nil
+if Dir.exists? File.join(git_dir, '.git')
+  puts "Opening standard repository in #{git_dir}" if $verbose
+  git = Git.open git_dir
+elsif File.exists? File.join(git_dir, '.git')
+  # Submodules have a file named .git that points to the true git dir
+  submodule_git_dir = File.read(File.join(git_dir, '.git')).chomp!.split[1]
+  puts "Opening submodule repository from #{git_dir}/.git repository: #{submodule_git_dir} index: #{File.join(submodule_git_dir, 'index')}" if $verbose
+  git = Git.open git_dir, :repository => submodule_git_dir, :index => File.join(submodule_git_dir, 'index')
+end
 
 def pull_summary(pull)
   return "##{pull[:number]} from #{pull[:user][:login]}: \"#{pull[:title]}\""
@@ -194,6 +204,7 @@ end
 
 # Figure out what GitHub project we're dealing with.
 github_project = GitPr::GitHub.determine_project_name_from_command_line git, options.project, $default_remotes
+puts "GitHub project: #{github_project}" if $verbose
 
 case command
 
