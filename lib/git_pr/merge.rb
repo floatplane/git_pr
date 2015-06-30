@@ -94,12 +94,12 @@ module GitPr
       puts "Unable to automatically rebase #{remote_source_branch} on top of #{target_branch}. Rebase manually and push before trying again.".red
       puts "Run: " + "git checkout #{source_branch}".yellow
       puts "     " + "git rebase #{target_branch}".yellow + " and fix up any conflicts."
-      puts "     " + "git push -f".yellow
+      puts "     " + "git push --force-with-lease".yellow
     }
 
     # Force push the rebased branch to the source remote.
     puts "Pushing changes from '#{rebase_branch}' to '#{source_remote.name}/#{source_branch}'"
-    GitPr.run_command "git push -f #{source_remote.name} HEAD:#{source_branch} 2>&1"
+    GitPr.run_command "git push --force-with-lease #{source_remote.name} HEAD:#{source_branch} 2>&1"
 
     # Merge the source branch into the target. Use --no-ff so that an explicit
     # merge commit is created.
