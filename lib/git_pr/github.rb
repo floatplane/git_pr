@@ -140,7 +140,7 @@ module GitPr
     end
 
     def self.find_or_prompt_for_pull_request github_project, pull_request
-      pulls = Octokit.pulls "#{github_project}/pulls"
+      pulls = Octokit.pulls "#{github_project}"
       unless pulls.length > 0
         puts "No open pull requests found for '#{github_project}'.".yellow
         exit

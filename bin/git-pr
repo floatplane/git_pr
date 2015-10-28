@@ -217,7 +217,7 @@ when "merge"
   GitPr::merge_pull_cleanly git, pull
 
 when "list"
-  pulls = Octokit.pulls "#{github_project}/pulls"
+  pulls = Octokit.pulls "#{github_project}"
   if options.list.user
     pulls = pulls.select { |p| p[:user][:login] == options.list.user }
   end
