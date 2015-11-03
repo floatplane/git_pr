@@ -199,7 +199,7 @@ elsif File.exists? File.join(git_dir, '.git')
 end
 
 def pull_summary(pull)
-  return "##{pull[:number]} from #{pull[:user][:login]}: \"#{pull[:title]}\""
+  return "##{pull[:number]} from #{pull[:user][:login]}: #{pull[:title]}"
 end
 
 # Figure out what GitHub project we're dealing with.
