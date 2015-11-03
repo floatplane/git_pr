@@ -105,7 +105,12 @@ module GitPr
     # merge commit is created.
     puts "Merging changes from '#{rebase_branch}' to '#{target_branch}'"
     GitPr.run_command "git checkout -q #{target_branch}"
-    GitPr.run_command "git merge --no-ff #{rebase_branch} -m #{Shellwords.escape("Merge " + pull_summary(pull))}"
+    commit_message = <<EOS
+Merge #{pull_summary(pull)}
+
+#{pull[:body]}
+EOS
+    GitPr.run_command "git merge --no-ff #{rebase_branch} -m #{Shellwords.escape commit_message}"
 
     # Print a log of the merge with branch structure visible. Jump through hoops to
     # get the right branch to start the log revision range with. If origin/develop
