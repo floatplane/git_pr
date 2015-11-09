@@ -1,3 +1,3 @@
 module GitPr
-  VERSION = "0.0.13.beta.1"
+  VERSION = "0.0.13"
 end
