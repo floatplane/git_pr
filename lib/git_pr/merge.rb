@@ -52,6 +52,13 @@ module GitPr
     # If the local target branch differs from the remote target branch, they
     # must be reconciled manually.
     remote_target_branch = "#{target_remote}/#{target_branch}"
+    begin
+      git.diff("remotes/#{remote_target_branch}", target_branch).any?
+    rescue
+      puts "Error cracking diff:"
+      puts git.diff("remotes/#{remote_target_branch}", target_branch).to_s
+      raise
+    end
     if git.diff("remotes/#{remote_target_branch}", target_branch).any?
       puts "Local branch '#{target_branch}' differs from remote branch '#{remote_target_branch}'. Please reconcile before continuing.".red
       exit -1
