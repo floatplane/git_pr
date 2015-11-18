@@ -198,8 +198,23 @@ elsif File.exists? File.join(git_dir, '.git')
   git = Git.open git_dir, :repository => submodule_git_dir, :index => File.join(submodule_git_dir, 'index')
 end
 
+def pull_request_status(pull)
+  Octokit.combined_status(pull.base.repo.full_name, pull.head.sha)
+end
+
+def status_summary(pull)
+  case pull_request_status(pull).state
+  when "pending"
+    "\u25CF".yellow
+  when "success"
+    "\u2713".green
+  else
+    "\u2717".red
+  end
+end
+
 def pull_summary(pull)
-  return "##{pull[:number]} from #{pull[:user][:login]}: #{pull[:title]}"
+  "#{status_summary(pull)} ##{pull[:number]} from #{pull[:user][:login]}: #{pull[:title]}"
 end
 
 # Figure out what GitHub project we're dealing with.
