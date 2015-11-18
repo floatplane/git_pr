@@ -20,6 +20,8 @@ require 'pp'
 $verbose = false
 $default_remotes = ["origin", "upstream"]
 
+LIST_STATUS_KEY = "pr.liststatus"
+
 options = OpenStruct.new(:help => false,
                          :verbose => false,
                          :project => nil,
@@ -44,7 +46,7 @@ eos
           "The GitHub project to access. Can be a named remote, or a GitHub project in",
           "<user>/<project> form. Defaults to the GitHub project that the \"origin\"",
           "or \"upstream\" remote points to. You can override the default remote",
-          "with git config. Run: 'git config --add pr.defaultremote <remote_name>'"
+          "with git config. Run: 'git config --add #{GitPr::GitHub::DEFAULT_REMOTE_KEY} <remote_name>'"
           ) do |project|
     options.project = project
   end
@@ -96,6 +98,16 @@ subcommands = {
 
     opts.on("-u", "--user [USERNAME]", "Only list PRs for the named GitHub user") do |user|
       options.list.user = user
+    end
+
+    opts.on("-s", "--[no-]status",
+            "Include PR status in the output. Including status is slower,",
+            "as each PR's status must be queried individually. You can set",
+            "the default behavior with git config:",
+            "\n",
+            "git config --bool --add #{LIST_STATUS_KEY} true"
+           ) do |s|
+      options.list.status = s
     end
 
     opts.separator ""
@@ -205,16 +217,17 @@ end
 def status_summary(pull)
   case pull_request_status(pull).state
   when "pending"
-    "\u25CF".yellow
+    STDOUT.tty? ? "\u25CF".yellow : "O"
   when "success"
-    "\u2713".green
+    STDOUT.tty? ? "\u2713".green : "+"
   else
-    "\u2717".red
+    STDOUT.tty? ? "\u2717".red : "-"
   end
 end
 
-def pull_summary(pull)
-  "#{status_summary(pull)} ##{pull[:number]} from #{pull[:user][:login]}: #{pull[:title]}"
+def pull_summary(pull, include_status)
+  status_string = include_status ? "#{status_summary(pull)} " : ""
+  "#{status_string}##{pull[:number]} from #{pull[:user][:login]}: #{pull[:title]}"
 end
 
 # Figure out what GitHub project we're dealing with.
@@ -236,9 +249,15 @@ when "list"
   if options.list.user
     pulls = pulls.select { |p| p[:user][:login] == options.list.user }
   end
+  include_status = false
+  if options.list.to_h.has_key?(:status)
+    include_status = options.list.status
+  elsif git.config.has_key? LIST_STATUS_KEY
+    include_status = git.config(LIST_STATUS_KEY) == 'true'
+  end
 
   if pulls.any?
-    pulls.each { |p| puts pull_summary(p) }
+    pulls.each { |p| puts pull_summary(p, include_status) }
   else
     puts "No open pull requests found.".yellow
   end
