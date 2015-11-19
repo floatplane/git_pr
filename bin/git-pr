@@ -386,7 +386,7 @@ when "status"
     exit 1
   end
 
-  puts "Pull request #{pull.number}: #{pull.title}"
+  puts "##{pull.number} from #{pull[:user][:login]}: #{pull.title}"
   statuses = Octokit.statuses(pull.base.repo.full_name, pull.head.sha)
   if statuses.empty?
     puts "No status found."
@@ -397,11 +397,18 @@ when "status"
   statuses.sort_by { |s| s.updated_at }.each { |s| statuses_by_context[s.context] = s }
 
   max_context = statuses_by_context.map { |c, s| s.context.length }.max
-  max_description = statuses_by_context.map { |c, s| s.description.length }.max
 
-  puts ""
+  puts <<EOS
+
+Status (cmd-double-click to open links):
+
+EOS
   statuses_by_context.each do |context, status|
-    puts "#{status_summary(status.state)}  #{status.context.ljust(max_context)}  #{status.description.ljust(max_description)}  #{status.target_url}"
+    puts "#{status_summary(status.state)}  #{status.context.ljust(max_context)}  #{status.target_url}"
   end
+  puts "\n"
+
+  success = statuses_by_context.all? { |c, s| s.state == 'success' }
+  exit (success ? 0 : 1)
 
 end
