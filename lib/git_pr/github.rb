@@ -132,7 +132,7 @@ module GitPr
       choose do |menu|
         menu.prompt = "Select PR to merge: "
         pulls.each do |pull|
-          menu.choice(pull_summary(pull)) { pull_to_merge = pull }
+          menu.choice(pull_summary(pull)) { pull_to_merge = GitPr::PullRequest(pull) }
         end
         menu.choice(:Quit, "Exit program.") { exit }
       end
@@ -155,7 +155,7 @@ module GitPr
       else
         pull = self.query_for_pull_to_merge pulls
       end
-      pull
+      GitPr::PullRequest(pull)
     end
 
   end

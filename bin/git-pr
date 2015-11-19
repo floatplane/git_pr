@@ -224,37 +224,13 @@ elsif File.exists? File.join(git_dir, '.git')
   git = Git.open git_dir, :repository => submodule_git_dir, :index => File.join(submodule_git_dir, 'index')
 end
 
-def pull_request_status(pull)
-  Octokit.combined_status(pull.base.repo.full_name, pull.head.sha)
-end
-
-def status_summary(state)
-  case state
-  when "failure"
-    STDOUT.tty? ? "\u2717".red : "-"
-  when "success"
-    STDOUT.tty? ? "\u2713".green : "+"
-  else
-    STDOUT.tty? ? "\u25CF".yellow : "O"
-  end
-end
-
-def pull_summary(pull, include_status)
-  if include_status
-    combined_status = pull_request_status(pull)
-    status_string = "#{status_summary(combined_status.state)} "
-  else
-    status_string = ""
-  end
-  "#{status_string}##{pull[:number]} from #{pull[:user][:login]}: #{pull[:title]}"
-end
-
 def find_pull_request_from_command_line_argument(git, github_project, argument)
   # Look for an existing pull request that fits. A branch name or PR number can
   # be passed on the command line, or we default to the current branch.
   pulls = Octokit.pulls github_project
   source = argument || git.current_branch
-  pulls.any? ? pulls.find { |p| p.head.ref == source || p.number.to_s == source } : nil
+  pull = pulls.any? ? pulls.find { |p| p.head.ref == source || p.number.to_s == source } : nil
+  pull ? GitPr::PullRequest.new(pull) : nil
 end
 
 # Figure out what GitHub project we're dealing with.
@@ -272,7 +248,7 @@ when "merge"
   GitPr::merge_pull_cleanly git, pull
 
 when "list"
-  pulls = Octokit.pulls "#{github_project}"
+  pulls = Octokit.pulls("#{github_project}").map { |p| GitPr::PullRequest.new(p) }
   if options.list.user
     pulls = pulls.select { |p| p[:user][:login] == options.list.user }
   end
@@ -284,7 +260,7 @@ when "list"
   end
 
   if pulls.any?
-    pulls.each { |p| puts pull_summary(p, include_status) }
+    pulls.each { |p| puts p.summary(include_status) }
   else
     puts "No open pull requests found.".yellow
   end
@@ -386,28 +362,23 @@ when "status"
     exit 1
   end
 
-  puts "##{pull.number} from #{pull[:user][:login]}: #{pull.title}\n\n"
-  statuses = Octokit.statuses(pull.base.repo.full_name, pull.head.sha)
-  if statuses.empty?
+  puts "#{pull.summary}\n\n"
+  if pull.statuses.empty?
     puts "No status found."
     exit
   end
 
-  statuses_by_context = {}
-  statuses.sort_by { |s| s.updated_at }.each { |s| statuses_by_context[s.context] = s }
-
-  max_context = statuses_by_context.map { |c, s| s.context.length }.max
+  max_context = pull.statuses.map { |s| s.context.length }.max
 
   puts <<EOS
 Status (cmd-double-click to open links):
 
 EOS
-  statuses_by_context.each do |context, status|
-    puts "#{status_summary(status.state)}  #{status.context.ljust(max_context)}  #{status.target_url}"
+  pull.statuses.each do |status|
+    puts "#{GitPr::PullRequest.summary_icon(status.state)}  #{status.context.ljust(max_context)}  #{status.target_url}"
   end
   puts "\n"
 
-  success = statuses_by_context.all? { |c, s| s.state == 'success' }
-  exit (success ? 0 : 1)
+  exit (pull.status.state == 'success' ? 0 : 1)
 
 end

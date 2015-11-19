@@ -4,30 +4,30 @@ module GitPr
 
   def self.ensure_remotes_for_pull_request git, pull
     source_remote = GitPr.ensure_remote_for_project(git,
-                                                    pull[:head][:user][:login],
-                                                    pull[:head][:repo][:ssh_url],
-                                                    pull[:head][:repo][:git_url])
+                                                    pull.head.user.login,
+                                                    pull.head.repo.ssh_url,
+                                                    pull.head.repo.git_url)
 
     target_remote = GitPr.ensure_remote_for_project(git,
-                                                    pull[:base][:user][:login],
-                                                    pull[:base][:repo][:ssh_url],
-                                                    pull[:base][:repo][:git_url])
+                                                    pull.base.user.login,
+                                                    pull.base.repo.ssh_url,
+                                                    pull.base.repo.git_url)
 
     [source_remote, target_remote]
   end
 
   def self.merge_pull_cleanly git, pull
 
-    pull_number = pull[:number]
-    source_branch = pull[:head][:ref]
-    source_repo_ssh_url = pull[:head][:repo][:git_url]
-    source_repo_clone_url = pull[:head][:repo][:clone_url]
+    pull_number = pull.number
+    source_branch = pull.head.ref
+    source_repo_ssh_url = pull.head.repo.git_url
+    source_repo_clone_url = pull.head.repo.clone_url
 
-    target_branch = pull[:base][:ref]
-    target_repo_ssh_url = pull[:base][:repo][:git_url]
-    target_repo_clone_url = pull[:base][:repo][:clone_url]
+    target_branch = pull.base.ref
+    target_repo_ssh_url = pull.base.repo.git_url
+    target_repo_clone_url = pull.base.repo.clone_url
 
-    puts "Merging #{pull_summary(pull)}".cyan
+    puts "Merging #{pull.summary}".cyan
     puts "#{target_repo_ssh_url}/#{target_branch} <= #{source_repo_ssh_url}/#{source_branch}\n".cyan
 
     # find or add a remote for the PR
@@ -106,9 +106,9 @@ module GitPr
     puts "Merging changes from '#{rebase_branch}' to '#{target_branch}'"
     GitPr.run_command "git checkout -q #{target_branch}"
     commit_message = <<EOS
-Merge #{pull_summary(pull)}
+Merge #{pull.summary}
 
-#{pull[:body]}
+#{pull.body}
 EOS
     GitPr.run_command "git merge --no-ff #{rebase_branch} -m #{Shellwords.escape commit_message}"
 
