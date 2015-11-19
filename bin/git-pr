@@ -386,7 +386,7 @@ when "status"
     exit 1
   end
 
-  puts "##{pull.number} from #{pull[:user][:login]}: #{pull.title}"
+  puts "##{pull.number} from #{pull[:user][:login]}: #{pull.title}\n"
   statuses = Octokit.statuses(pull.base.repo.full_name, pull.head.sha)
   if statuses.empty?
     puts "No status found."
@@ -399,7 +399,6 @@ when "status"
   max_context = statuses_by_context.map { |c, s| s.context.length }.max
 
   puts <<EOS
-
 Status (cmd-double-click to open links):
 
 EOS
