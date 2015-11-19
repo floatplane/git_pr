@@ -386,7 +386,7 @@ when "status"
     exit 1
   end
 
-  puts "##{pull.number} from #{pull[:user][:login]}: #{pull.title}\n"
+  puts "##{pull.number} from #{pull[:user][:login]}: #{pull.title}\n\n"
   statuses = Octokit.statuses(pull.base.repo.full_name, pull.head.sha)
   if statuses.empty?
     puts "No status found."
