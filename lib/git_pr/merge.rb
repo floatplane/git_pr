@@ -182,15 +182,16 @@ EOS
     if GitPr.prompt "\nDo you want to proceed with the merge (y/n)? ".cyan
       puts "Pushing changes to '#{target_remote}'"
       GitPr.run_command "git push #{target_remote} #{target_branch} 2>&1"
-      if GitPr.prompt "\nDo you want to delete the feature branch (y/n)? ".cyan
-        source_branch_sha = git.branches["#{source_remote}/#{source_branch}"].gcommit.sha[0..6]
-        GitPr.run_command "git push #{source_remote} :#{source_branch} 2>&1"
-        if git.is_local_branch? source_branch
-          source_branch_sha = git.branches[source_branch].gcommit.sha[0..6]
-          GitPr.run_command "git branch -D #{source_branch}"
-        end
-        puts "Feature branch '#{source_branch}' deleted. To restore it, run: " + "git branch #{source_branch} #{source_branch_sha}".green
+
+      # Delete the remote and local feature branches
+      source_branch_sha = git.branches["#{source_remote}/#{source_branch}"].gcommit.sha[0..6]
+      GitPr.run_command "git push #{source_remote} :#{source_branch} 2>&1"
+      if git.is_local_branch? source_branch
+        source_branch_sha = git.branches[source_branch].gcommit.sha[0..6]
+        GitPr.run_command "git branch -D #{source_branch}"
       end
+      puts "Feature branch '#{source_branch}' deleted. To restore it, run: " + "git branch #{source_branch} #{source_branch_sha}".green
+
       puts "\nMerge complete!".cyan
     else
       puts "\nUndoing local merge"
