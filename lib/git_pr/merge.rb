@@ -24,6 +24,7 @@ module GitPr
         max_context = failed_statuses.map { |s| s.context.length }.max
         puts <<EOS
 #{"ERROR".red}: One or more status checks have failed on this pull request!
+You should fix these before merging.
 
 #{" " * (max_context + 5)}(cmd-double-click to open links)
 EOS
