@@ -12,6 +12,10 @@ module GitPr
       @_status
     end
 
+    def state
+      self.status.state
+    end
+
     def statuses
       self.status.statuses
     end

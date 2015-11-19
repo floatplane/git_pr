@@ -1,3 +1,4 @@
+require 'git_pr/pull_request'
 require 'io/console'
 require 'octokit'
 require 'netrc'
@@ -132,7 +133,7 @@ module GitPr
       choose do |menu|
         menu.prompt = "Select PR to merge: "
         pulls.each do |pull|
-          menu.choice(pull_summary(pull)) { pull_to_merge = GitPr::PullRequest(pull) }
+          menu.choice(pull_summary(pull)) { pull_to_merge = GitPr::PullRequest.new(pull) }
         end
         menu.choice(:Quit, "Exit program.") { exit }
       end
@@ -155,7 +156,7 @@ module GitPr
       else
         pull = self.query_for_pull_to_merge pulls
       end
-      GitPr::PullRequest(pull)
+      GitPr::PullRequest.new(pull)
     end
 
   end

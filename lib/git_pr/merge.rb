@@ -16,7 +16,50 @@ module GitPr
     [source_remote, target_remote]
   end
 
-  def self.merge_pull_cleanly git, pull
+  def self.merge_pull_cleanly git, pull, command_options
+    unless command_options.yolo
+      case pull.state
+      when 'failure'
+        failed_statuses = pull.statuses.select { |s| s.state == 'failure' }
+        max_context = failed_statuses.map { |s| s.context.length }.max
+        puts <<EOS
+#{"ERROR".red}: One or more status checks have failed on this pull request!
+
+#{" " * (max_context + 5)}(cmd-double-click to open links)
+EOS
+        failed_statuses.each do |status|
+          puts "#{GitPr::PullRequest.summary_icon(status.state)}  #{status.context.ljust(max_context)}  #{status.target_url}"
+        end
+
+        puts <<EOS
+
+If you're still sure you want to merge, call again with --yolo: 'git pr merge --yolo #{pull.number}'
+EOS
+        exit 1
+      when 'success'
+        nil
+      else
+        unless pull.statuses.empty?
+          pending_statuses = pull.statuses.select { |s| s.state == 'pending' }
+          max_context = pending_statuses.map { |s| s.context.length }.max
+          puts <<EOS
+#{"WARNING".yellow}: One or more status checks is in progress on this pull request.
+You should let them finish.
+
+#{" " * (max_context + 5)}(cmd-double-click to open links)
+EOS
+          pending_statuses.each do |status|
+            puts "#{GitPr::PullRequest.summary_icon(status.state)}  #{status.context.ljust(max_context)}  #{status.target_url}"
+          end
+
+          puts <<EOS
+
+If you're still sure you want to merge, call again with --yolo: 'git pr merge --yolo #{pull.number}'
+EOS
+          exit 1
+        end
+      end
+    end
 
     pull_number = pull.number
     source_branch = pull.head.ref

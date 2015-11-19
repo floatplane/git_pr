@@ -29,7 +29,7 @@ options = OpenStruct.new(:help => false,
                          :diff => OpenStruct.new(),
                          :difftool => OpenStruct.new(),
                          :list => OpenStruct.new(),
-                         :merge => OpenStruct.new(),
+                         :merge => OpenStruct.new(:yolo => false),
                          :open => OpenStruct.new(),
                          :status => OpenStruct.new())
 
@@ -121,7 +121,13 @@ Usage: git pr merge [PR number]
 If a PR number isn't passed, a menu of open PRs will be displayed.
 eos
 
-    # opts.separator "\nMerge command options"
+    opts.separator "\nMerge command options"
+
+    opts.on("-y", "--yolo",
+            "Don't check PR status before merging"
+           ) do |y|
+      options.merge.yolo = y
+    end
 
     opts.separator ""
   end,
@@ -245,7 +251,7 @@ when "merge"
   end
   # Load a pull request
   pull = GitPr::GitHub.find_or_prompt_for_pull_request github_project, pull_request
-  GitPr::merge_pull_cleanly git, pull
+  GitPr::merge_pull_cleanly git, pull, options.merge
 
 when "list"
   pulls = Octokit.pulls("#{github_project}").map { |p| GitPr::PullRequest.new(p) }
