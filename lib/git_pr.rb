@@ -27,10 +27,11 @@ module GitPr
     state = `stty -g`
     `stty raw -echo -icanon isig`
 
-    STDIN.getc.chr
+    c = STDIN.getc.chr
+    c
   ensure
     `stty #{state}`
-    puts ""
+    puts "#{c}"
   end
 
   def self.prompt prompt
