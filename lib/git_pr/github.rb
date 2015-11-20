@@ -1,3 +1,4 @@
+require 'git_pr/pull_request'
 require 'io/console'
 require 'octokit'
 require 'netrc'
@@ -132,7 +133,7 @@ module GitPr
       choose do |menu|
         menu.prompt = "Select PR to merge: "
         pulls.each do |pull|
-          menu.choice(pull_summary(pull)) { pull_to_merge = pull }
+          menu.choice(pull.summary) { pull_to_merge = pull }
         end
         menu.choice(:Quit, "Exit program.") { exit }
       end
@@ -140,14 +141,14 @@ module GitPr
     end
 
     def self.find_or_prompt_for_pull_request github_project, pull_request
-      pulls = Octokit.pulls "#{github_project}"
+      pulls = Octokit.pulls("#{github_project}").map { |p| GitPr::PullRequest.new(p) }
       unless pulls.length > 0
         puts "No open pull requests found for '#{github_project}'.".yellow
         exit
       end
       if pull_request
         pull_request = pull_request
-        pull = pulls.find { |p| p[:number] == pull_request }
+        pull = pulls.find { |p| p.number == pull_request }
         unless pull
           puts "Pull request #{pull_request} not found in project '#{github_project}'!".red
           exit -1

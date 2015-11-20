@@ -4,30 +4,72 @@ module GitPr
 
   def self.ensure_remotes_for_pull_request git, pull
     source_remote = GitPr.ensure_remote_for_project(git,
-                                                    pull[:head][:user][:login],
-                                                    pull[:head][:repo][:ssh_url],
-                                                    pull[:head][:repo][:git_url])
+                                                    pull.head.user.login,
+                                                    pull.head.repo.ssh_url,
+                                                    pull.head.repo.git_url)
 
     target_remote = GitPr.ensure_remote_for_project(git,
-                                                    pull[:base][:user][:login],
-                                                    pull[:base][:repo][:ssh_url],
-                                                    pull[:base][:repo][:git_url])
+                                                    pull.base.user.login,
+                                                    pull.base.repo.ssh_url,
+                                                    pull.base.repo.git_url)
 
     [source_remote, target_remote]
   end
 
-  def self.merge_pull_cleanly git, pull
+  def self.merge_pull_cleanly git, pull, command_options
+    unless command_options.yolo
+      case pull.state
+      when 'failure'
+        failed_statuses = pull.statuses.select { |s| s.state == 'failure' }
+        max_context = failed_statuses.map { |s| s.context.length }.max
+        puts <<EOS
+#{"ERROR".red}: One or more status checks have failed on this pull request!
+You should fix these before merging.
 
-    pull_number = pull[:number]
-    source_branch = pull[:head][:ref]
-    source_repo_ssh_url = pull[:head][:repo][:git_url]
-    source_repo_clone_url = pull[:head][:repo][:clone_url]
+EOS
+        failed_statuses.each do |status|
+          puts "#{GitPr::PullRequest.summary_icon(status.state)}  #{status.context.ljust(max_context)}  #{status.target_url}"
+        end
 
-    target_branch = pull[:base][:ref]
-    target_repo_ssh_url = pull[:base][:repo][:git_url]
-    target_repo_clone_url = pull[:base][:repo][:clone_url]
+        puts <<EOS
 
-    puts "Merging #{pull_summary(pull)}".cyan
+If you're still sure you want to merge, run 'git pr merge --yolo #{pull.number}'
+EOS
+        exit 1
+      when 'success'
+        nil
+      else
+        unless pull.statuses.empty?
+          pending_statuses = pull.statuses.select { |s| s.state == 'pending' }
+          max_context = pending_statuses.map { |s| s.context.length }.max
+          puts <<EOS
+#{"WARNING".yellow}: One or more status checks is in progress on this pull request.
+You should let them finish.
+
+EOS
+          pending_statuses.each do |status|
+            puts "#{GitPr::PullRequest.summary_icon(status.state)}  #{status.context.ljust(max_context)}  #{status.target_url}"
+          end
+
+          puts <<EOS
+
+If you're still sure you want to merge, run 'git pr merge --yolo #{pull.number}'
+EOS
+          exit 1
+        end
+      end
+    end
+
+    pull_number = pull.number
+    source_branch = pull.head.ref
+    source_repo_ssh_url = pull.head.repo.git_url
+    source_repo_clone_url = pull.head.repo.clone_url
+
+    target_branch = pull.base.ref
+    target_repo_ssh_url = pull.base.repo.git_url
+    target_repo_clone_url = pull.base.repo.clone_url
+
+    puts "Merging #{pull.summary}".cyan
     puts "#{target_repo_ssh_url}/#{target_branch} <= #{source_repo_ssh_url}/#{source_branch}\n".cyan
 
     # find or add a remote for the PR
@@ -106,9 +148,9 @@ module GitPr
     puts "Merging changes from '#{rebase_branch}' to '#{target_branch}'"
     GitPr.run_command "git checkout -q #{target_branch}"
     commit_message = <<EOS
-Merge #{pull_summary(pull)}
+Merge #{pull.summary}
 
-#{pull[:body]}
+#{pull.body}
 EOS
     GitPr.run_command "git merge --no-ff #{rebase_branch} -m #{Shellwords.escape commit_message}"
 
@@ -139,15 +181,16 @@ EOS
     if GitPr.prompt "\nDo you want to proceed with the merge (y/n)? ".cyan
       puts "Pushing changes to '#{target_remote}'"
       GitPr.run_command "git push #{target_remote} #{target_branch} 2>&1"
-      if GitPr.prompt "\nDo you want to delete the feature branch (y/n)? ".cyan
-        source_branch_sha = git.branches["#{source_remote}/#{source_branch}"].gcommit.sha[0..6]
-        GitPr.run_command "git push #{source_remote} :#{source_branch} 2>&1"
-        if git.is_local_branch? source_branch
-          source_branch_sha = git.branches[source_branch].gcommit.sha[0..6]
-          GitPr.run_command "git branch -D #{source_branch}"
-        end
-        puts "Feature branch '#{source_branch}' deleted. To restore it, run: " + "git branch #{source_branch} #{source_branch_sha}".green
+
+      # Delete the remote and local feature branches
+      source_branch_sha = git.branches["#{source_remote}/#{source_branch}"].gcommit.sha[0..6]
+      GitPr.run_command "git push #{source_remote} :#{source_branch} 2>&1"
+      if git.is_local_branch? source_branch
+        source_branch_sha = git.branches[source_branch].gcommit.sha[0..6]
+        GitPr.run_command "git branch -D #{source_branch}"
       end
+      puts "Feature branch '#{source_branch}' deleted. To restore it, run: " + "git branch #{source_branch} #{source_branch_sha}".green
+
       puts "\nMerge complete!".cyan
     else
       puts "\nUndoing local merge"

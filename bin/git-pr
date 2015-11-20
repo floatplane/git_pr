@@ -20,6 +20,8 @@ require 'pp'
 $verbose = false
 $default_remotes = ["origin", "upstream"]
 
+LIST_STATUS_KEY = "pr.liststatus"
+
 options = OpenStruct.new(:help => false,
                          :verbose => false,
                          :project => nil,
@@ -27,14 +29,15 @@ options = OpenStruct.new(:help => false,
                          :diff => OpenStruct.new(),
                          :difftool => OpenStruct.new(),
                          :list => OpenStruct.new(),
-                         :merge => OpenStruct.new(),
-                         :open => OpenStruct.new())
+                         :merge => OpenStruct.new(:yolo => false),
+                         :open => OpenStruct.new(),
+                         :status => OpenStruct.new())
 
 global_options = OptionParser.new do |opts|
   opts.banner = <<eos
 git_pr version #{GitPr::VERSION}
 
-Usage: git pr [options] subcommand [options]
+Usage: git pr [options] command [options]
 eos
 
   opts.separator "\nGlobal options"
@@ -44,7 +47,7 @@ eos
           "The GitHub project to access. Can be a named remote, or a GitHub project in",
           "<user>/<project> form. Defaults to the GitHub project that the \"origin\"",
           "or \"upstream\" remote points to. You can override the default remote",
-          "with git config. Run: 'git config --add pr.defaultremote <remote_name>'"
+          "with git config. Run: 'git config --add #{GitPr::GitHub::DEFAULT_REMOTE_KEY} <remote_name>'"
           ) do |project|
     options.project = project
   end
@@ -61,14 +64,15 @@ eos
 
   opts.separator <<eos
 
-Valid subcommands:
-    diff: Use "git diff" to display a diff for a pull request
+Valid commands:
+    diff:     Use "git diff" to display a diff for a pull request
     difftool: Like "diff", but uses "git difftool" instead
-    list: List open pull requests
-    merge: Merge and close a pull request
-    open: Open a PR page on the web
+    list:     List open pull requests
+    status:   Show the detailed status for a pull request
+    merge:    Merge and close a pull request
+    open:     Open a PR page on the web
 
-Run "git pr <subcommand> -h" for help with subcommands.
+Run "git pr help <command>" for more detailed help.
 
 eos
 end
@@ -86,7 +90,7 @@ eos
   end
 end
 
-subcommands = {
+commands = {
   'diff' => make_diff_argument_parser("diff"),
   'difftool' => make_diff_argument_parser("difftool"),
   'list' => OptionParser.new do |opts|
@@ -98,6 +102,16 @@ subcommands = {
       options.list.user = user
     end
 
+    opts.on("-s", "--[no-]status",
+            "Include PR status in the output. Including status is slower,",
+            "as each PR's status must be queried individually. You can set",
+            "the default behavior with git config:",
+            "\n",
+            "git config --bool --add #{LIST_STATUS_KEY} true"
+           ) do |s|
+      options.list.status = s
+    end
+
     opts.separator ""
   end,
   'merge' => OptionParser.new do |opts|
@@ -107,7 +121,13 @@ Usage: git pr merge [PR number]
 If a PR number isn't passed, a menu of open PRs will be displayed.
 eos
 
-    # opts.separator "\nMerge command options"
+    opts.separator "\nMerge command options"
+
+    opts.on("-y", "--yolo",
+            "Don't check PR status before merging"
+           ) do |y|
+      options.merge.yolo = y
+    end
 
     opts.separator ""
   end,
@@ -122,11 +142,21 @@ argument is passed, open a PR page for the current branch.
 
 eos
 
+  end,
+  'status' => OptionParser.new do |opts|
+    opts.banner = "Usage: git pr status [pr_number|branch]"
+
+    opts.separator <<eos
+
+Report detailed pull request status for the passed in PR number or
+branch.
+
+eos
   end
 }
 
-def alias_to_subcommand(subcommand)
-  case subcommand
+def alias_to_command(command)
+  case command
   when "dt", /^difft/
     "difftool"
   when "d", /^d/
@@ -137,8 +167,10 @@ def alias_to_subcommand(subcommand)
     "list"
   when "ci", /^m/
     "merge"
+  when /^s/
+    "status"
   else
-    subcommand
+    command
   end
 end
 
@@ -151,13 +183,13 @@ rescue OptionParser::InvalidOption => e
   exit
 end
 
-command = alias_to_subcommand(ARGV.shift)
+command = alias_to_command(ARGV.shift)
 
-# Check for the special command help. Support "git pr help" and "git pr help <subcommand>"
+# Check for the special command help. Support "git pr help" and "git pr help <command>"
 if command == "help"
-  command = alias_to_subcommand(ARGV.shift)
-  if subcommands[command]
-    puts subcommands[command]
+  command = alias_to_command(ARGV.shift)
+  if commands[command]
+    puts commands[command]
   else
     puts global_options
   end
@@ -165,17 +197,17 @@ if command == "help"
 end
 
 # Unrecognized command? Print help and exit
-if !subcommands[command]
+if !commands[command]
   puts global_options
   exit
 end
 
-# Parse subcommand options. Print help if any unrecognized
+# Parse command options. Print help if any unrecognized
 begin
-  options[command].additional_arguments = subcommands[command].permute!
+  options[command].additional_arguments = commands[command].permute!
 rescue OptionParser::InvalidOption => e
   puts e
-  puts subcommands[command]
+  puts commands[command]
   exit
 end
 
@@ -198,8 +230,13 @@ elsif File.exists? File.join(git_dir, '.git')
   git = Git.open git_dir, :repository => submodule_git_dir, :index => File.join(submodule_git_dir, 'index')
 end
 
-def pull_summary(pull)
-  return "##{pull[:number]} from #{pull[:user][:login]}: #{pull[:title]}"
+def find_pull_request_from_command_line_argument(git, github_project, argument)
+  # Look for an existing pull request that fits. A branch name or PR number can
+  # be passed on the command line, or we default to the current branch.
+  pulls = Octokit.pulls github_project
+  source = argument || git.current_branch
+  pull = pulls.any? ? pulls.find { |p| p.head.ref == source || p.number.to_s == source } : nil
+  pull ? GitPr::PullRequest.new(pull) : nil
 end
 
 # Figure out what GitHub project we're dealing with.
@@ -214,37 +251,37 @@ when "merge"
   end
   # Load a pull request
   pull = GitPr::GitHub.find_or_prompt_for_pull_request github_project, pull_request
-  GitPr::merge_pull_cleanly git, pull
+  GitPr::merge_pull_cleanly git, pull, options.merge
 
 when "list"
-  pulls = Octokit.pulls "#{github_project}"
+  pulls = Octokit.pulls("#{github_project}").map { |p| GitPr::PullRequest.new(p) }
   if options.list.user
-    pulls = pulls.select { |p| p[:user][:login] == options.list.user }
+    pulls = pulls.select { |p| p.user.login == options.list.user }
+  end
+  include_status = false
+  if options.list.to_h.has_key?(:status)
+    include_status = options.list.status
+  elsif git.config.has_key? LIST_STATUS_KEY
+    include_status = git.config(LIST_STATUS_KEY) == 'true'
   end
 
   if pulls.any?
-    pulls.each { |p| puts pull_summary(p) }
+    pulls.each { |p| puts p.summary(include_status) }
   else
     puts "No open pull requests found.".yellow
   end
 
 when "open"
-
-  # Look for an existing pull request that fits. A branch name or PR number can
-  # be passed on the command line, or we default to the current branch.
-  pulls = Octokit.pulls github_project
-  source = options[command].additional_arguments.shift || git.current_branch
-  if pulls.any?
-    pull = pulls.find { |p| p.head.ref == source || p.number.to_s == source }
-    if pull
-      `open #{pull.html_url}`
-      exit
-    end
+  argument = options[command].additional_arguments.shift
+  pull = find_pull_request_from_command_line_argument git, github_project, argument
+  if pull
+    `open #{pull.html_url}`
+    exit
   end
 
   # We didn't find a matching pull request, so let's try to open the "create
-  # pull request" page.
-  source = source
+  # pull request" page for the passed in branch, or the current branch.
+  source = argument || git.current_branch
   if not git.is_local_branch_fast? source
     puts "Unknown branch '#{source}'.".red
     exit -1
@@ -281,7 +318,7 @@ when "diff", "difftool"
 
   unless pull_request
     puts "Must specify a pull request to diff.\n".red
-    puts subcommands[command]
+    puts commands[command]
     exit -1
   end
 
@@ -290,7 +327,7 @@ when "diff", "difftool"
     pull = Octokit.pull github_project, pull_request
   rescue Octokit::NotFound
     puts "Pull request #{pull_request} not found in #{github_project}.\n".red
-    puts subcommands[command]
+    puts commands[command]
     exit -1
   end
 
@@ -306,11 +343,11 @@ when "diff", "difftool"
     end
     true
   end
-  source_remote.fetch unless have_commit_locally git, pull[:head][:sha]
-  target_remote.fetch unless have_commit_locally git, pull[:base][:sha]
+  source_remote.fetch unless have_commit_locally git, pull.head.sha
+  target_remote.fetch unless have_commit_locally git, pull.base.sha
 
-  source_branch = pull[:head][:ref]
-  target_branch = pull[:base][:ref]
+  source_branch = pull.head.ref
+  target_branch = pull.base.ref
   merge_base = `git merge-base #{source_remote}/#{source_branch} #{target_remote}/#{target_branch}`.strip!
   diff_command = "git #{command} #{options[command].additional_arguments.join " "} #{merge_base} #{source_remote}/#{source_branch}".gsub /\s* /, " "
   puts "Executing #{diff_command}"
@@ -322,5 +359,31 @@ when "diff", "difftool"
 
   # Wait for the child
   Process.wait child
+
+when "status"
+  argument = options[command].additional_arguments.shift
+  pull = find_pull_request_from_command_line_argument git, github_project, argument
+  unless pull
+    puts "No matching pull request found"
+    exit 1
+  end
+
+  puts "#{pull.summary}\n\n"
+  if pull.statuses.empty?
+    puts "No status found."
+    exit
+  end
+
+  max_context = pull.statuses.map { |s| s.context.length }.max
+
+#   puts <<EOS
+# #{" " * (max_context + 5)}(cmd-double-click to open links)
+# EOS
+  pull.statuses.each do |status|
+    puts "#{GitPr::PullRequest.summary_icon(status.state)}  #{status.context.ljust(max_context)}  #{status.target_url}"
+  end
+  puts "\n"
+
+  exit (pull.status.state == 'success' ? 0 : 1)
 
 end
