@@ -7,7 +7,7 @@ module GitPr
 
     def status
       unless @_status
-        @_status = Octokit.status(@pull.base.repo.full_name, @pull.head.sha, :accept => Octokit::Client::Statuses::COMBINED_STATUS_MEDIA_TYPE)
+        @_status = Octokit.status(@pull.base.repo.full_name, @pull.head.sha)
       end
       @_status
     end
