@@ -33,7 +33,7 @@ EOS
 
         puts <<EOS
 
-If you're still sure you want to merge, call again with --yolo: 'git pr merge --yolo #{pull.number}'
+If you're still sure you want to merge, run 'git pr merge --yolo #{pull.number}'
 EOS
         exit 1
       when 'success'
@@ -53,7 +53,7 @@ EOS
 
           puts <<EOS
 
-If you're still sure you want to merge, call again with --yolo: 'git pr merge --yolo #{pull.number}'
+If you're still sure you want to merge, run 'git pr merge --yolo #{pull.number}'
 EOS
           exit 1
         end
