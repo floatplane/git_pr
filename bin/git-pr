@@ -376,10 +376,9 @@ when "status"
 
   max_context = pull.statuses.map { |s| s.context.length }.max
 
-  puts <<EOS
-Status (cmd-double-click to open links):
-
-EOS
+#   puts <<EOS
+# #{" " * (max_context + 5)}(cmd-double-click to open links)
+# EOS
   pull.statuses.each do |status|
     puts "#{GitPr::PullRequest.summary_icon(status.state)}  #{status.context.ljust(max_context)}  #{status.target_url}"
   end

@@ -26,7 +26,6 @@ module GitPr
 #{"ERROR".red}: One or more status checks have failed on this pull request!
 You should fix these before merging.
 
-#{" " * (max_context + 5)}(cmd-double-click to open links)
 EOS
         failed_statuses.each do |status|
           puts "#{GitPr::PullRequest.summary_icon(status.state)}  #{status.context.ljust(max_context)}  #{status.target_url}"
@@ -47,7 +46,6 @@ EOS
 #{"WARNING".yellow}: One or more status checks is in progress on this pull request.
 You should let them finish.
 
-#{" " * (max_context + 5)}(cmd-double-click to open links)
 EOS
           pending_statuses.each do |status|
             puts "#{GitPr::PullRequest.summary_icon(status.state)}  #{status.context.ljust(max_context)}  #{status.target_url}"
