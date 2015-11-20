@@ -280,8 +280,8 @@ when "open"
   end
 
   # We didn't find a matching pull request, so let's try to open the "create
-  # pull request" page.
-  source = source
+  # pull request" page for the passed in branch, or the current branch.
+  source = argument || git.current_branch
   if not git.is_local_branch_fast? source
     puts "Unknown branch '#{source}'.".red
     exit -1
