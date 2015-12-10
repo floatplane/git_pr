@@ -146,7 +146,7 @@ module GitPr
         puts "No open pull requests found for '#{github_project}'.".yellow
         exit
       end
-      if pull_request
+      if pull_request > 0
         pull_request = pull_request
         pull = pulls.find { |p| p.number == pull_request }
         unless pull
