@@ -16,6 +16,13 @@ module GitPr
     [source_remote, target_remote]
   end
 
+  def self.are_branches_identical? git, branch_one, branch_two
+    sha1 = `git rev-parse --short #{branch_one}`.strip!
+    sha2 = `git rev-parse --short #{branch_two}`.strip!
+    return (sha1 == sha2) &&
+           git.diff(branch_one, branch_two).stats[:total][:files] == 0
+  end
+
   def self.merge_pull_cleanly git, pull, command_options
     unless command_options.yolo
       case pull.state
@@ -84,6 +91,15 @@ EOS
       target_remote.fetch
     end
 
+    current_branch = `git rev-parse --abbrev-ref HEAD`.strip!
+    at_exit do
+      # Restore the branch we started on, if it hasn't been deleted as part of
+      # completing a merge.
+      if git.branches[current_branch]
+        GitPr.run_command "git checkout -q #{current_branch}"
+      end
+    end
+
     # Get the target branch up to date
     puts "Update branch '#{target_branch}' from remote"
     GitPr.run_command "git checkout -q #{target_branch}"
@@ -94,7 +110,7 @@ EOS
     # If the local target branch differs from the remote target branch, they
     # must be reconciled manually.
     remote_target_branch = "#{target_remote}/#{target_branch}"
-    if git.diff("remotes/#{remote_target_branch}", target_branch).any?
+    unless GitPr.are_branches_identical? git, "remotes/#{remote_target_branch}", target_branch
       puts "Local branch '#{target_branch}' differs from remote branch '#{remote_target_branch}'. Please reconcile before continuing.".red
       exit -1
     end
@@ -104,7 +120,7 @@ EOS
     # manually.
     remote_source_branch = "#{source_remote}/#{source_branch}"
     if git.is_local_branch? source_branch and
-        git.diff("remotes/#{remote_source_branch}", source_branch).any?
+        not GitPr.are_branches_identical? git, "remotes/#{remote_source_branch}", source_branch
       puts "Local branch '#{source_branch}' differs from remote branch '#{remote_source_branch}'. Please reconcile before continuing.".red
       exit -1
     end
@@ -115,6 +131,7 @@ EOS
     puts "Create temporary branch '#{rebase_branch}'"
     if git.is_local_branch? rebase_branch
       puts "Local rebase branch '#{rebase_branch}' already exists. Please remove before continuing.".red
+      GitPr.run_command "git checkout -q #{current_branch}"
       exit -1
     end
     GitPr.run_command "git checkout -q -b #{rebase_branch} #{remote_source_branch}"
