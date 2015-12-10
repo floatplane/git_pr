@@ -247,10 +247,13 @@ case command
 
 when "merge"
   unless options.merge.additional_arguments.empty?
-    pull_request = options.merge.additional_arguments.shift.to_i
+    argument = options.merge.additional_arguments.shift
   end
   # Load a pull request
-  pull = GitPr::GitHub.find_or_prompt_for_pull_request github_project, pull_request
+  pull = find_pull_request_from_command_line_argument(git, github_project, argument)
+  unless pull
+    pull = GitPr::GitHub.find_or_prompt_for_pull_request(github_project, argument.to_i)
+  end
   GitPr::merge_pull_cleanly git, pull, options.merge
 
 when "list"
