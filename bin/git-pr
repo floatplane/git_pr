@@ -301,7 +301,22 @@ when "open"
   remote = git.find_remote_for_local_branch source
   remote_url = remote ? remote.url : nil
   unless remote_url and remote_url.match /github\.com/
-    puts "Branch '#{source}' has never been pushed to GitHub."
+    puts <<EOS
+
+Branch '#{source}' has never been pushed to GitHub,
+or was pushed without setting the upstream branch.
+
+To fix this problem, try running:
+
+    git branch --set-upstream-to=<your_remote>/#{source} #{source}
+
+In the future, you can avoid this problem by making your first push
+with the --set-upstream argument(or the shorthand, -u):
+
+    git push --set-upstream <your_remote> #{source}
+    git push -u <your_remote> #{source}
+
+EOS
     exit -1
   end
   github_source_owner = remote_url.match(/git@github.com:(.*)\//)[1]
