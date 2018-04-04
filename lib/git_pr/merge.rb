@@ -1,5 +1,3 @@
-require 'shellwords'
-
 module GitPr
 
   def self.ensure_remotes_for_pull_request git, pull
@@ -169,8 +167,7 @@ Merge #{pull.summary}
 
 #{pull.body}
 EOS
-    GitPr.run_command "git merge --no-ff #{rebase_branch} -m #{Shellwords.escape commit_message}"
-
+    GitPr.run_command "git merge --no-ff #{rebase_branch} -m \"#{commit_message}\""
     # Print a log of the merge with branch structure visible. Jump through hoops to
     # get the right branch to start the log revision range with. If origin/develop
     # is a merge commit, we need the right parent of the merge.
