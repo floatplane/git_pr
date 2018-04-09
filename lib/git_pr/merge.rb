@@ -176,15 +176,19 @@ Merge #{pull.summary}
 
 #{pull.body}
 EOS
-    cmd = "git merge --no-ff #{rebase_branch} -m #{Shellwords.escape commit_message}"
+    escaped_commit_message = Shellwords.escape commit_message
+
+    # Detect if running on Windows
+    # https://stackoverflow.com/a/4871457
     is_windows = (RbConfig::CONFIG['host_os'] =~ /mswin|mingw|cygwin/)
     if is_windows
       # We're running on Windows, so `Shellwords.escape commit_message` may produce
       # a string that DOS-based shells will have trouble interpretting.
       # Instead we escape for DOS shell rather than Bourne again (bash) shell
-      cmd = "git merge --no-ff #{rebase_branch} -m #{GitPr.dos_escape commit_message}"
+      escaped_commit_message = GitPr.dos_escape commit_message
     end
-    GitPr.run_command cmd
+
+    GitPr.run_command "git merge --no-ff #{rebase_branch} -m #{escaped_commit_message}"
 
     # Print a log of the merge with branch structure visible. Jump through hoops to
     # get the right branch to start the log revision range with. If origin/develop
